@@ -142,7 +142,7 @@ async def chat(
     # GPT-4o has a 128k token limit (~400k chars with overhead).
     # Truncate large HSD documents to keep the most useful sections
     # (header, global props, features, spatial) which appear first.
-    MAX_HSD_CHARS = 280_000
+    MAX_HSD_CHARS = 180_000
     if len(hsd_text) > MAX_HSD_CHARS:
         hsd_text = (
             hsd_text[:MAX_HSD_CHARS]
