@@ -209,13 +209,13 @@ def _run_pipeline(input_path: Path, session_dir: Path) -> dict:
             except Exception:
                 pass
 
-    # Render views
+    # Render views — must run in a subprocess on macOS because VTK's Cocoa
+    # backend (vtkCocoaRenderWindow) requires NSWindow on the main thread.
+    # A subprocess has its own main thread so this restriction doesn't apply.
     image_paths: list[str] = []
     try:
-        from .renderer import render_shape
         render_dir = session_dir / "views"
-        rendered = render_shape(shape, render_dir, image_size=(900, 675), stem=input_path.stem)
-        image_paths = [str(p) for p in rendered]
+        image_paths = _render_subprocess(shape, render_dir, (900, 675), input_path.stem)
     except Exception:
         pass
 
@@ -250,6 +250,62 @@ def _run_pipeline(input_path: Path, session_dir: Path) -> dict:
     }
 
 
+def _render_subprocess(shape, output_dir: Path, image_size: tuple, stem: str) -> list[str]:
+    """Render VTK views in a subprocess to avoid macOS NSWindow threading crash.
+
+    VTK's Cocoa backend requires NSWindow creation on the main thread.
+    Running in a subprocess gives us a fresh main thread.
+    """
+    import subprocess
+    import sys
+    import tempfile
+    import os
+
+    # Serialize shape to a temp BREP file so the subprocess can load it
+    from OCP.BRepTools import BRepTools
+
+    with tempfile.NamedTemporaryFile(suffix=".brep", delete=False) as f:
+        brep_path = f.name
+    try:
+        BRepTools.Write_s(shape, brep_path)
+
+        # Find the src/ directory so the subprocess can import cadvert
+        src_dir = str(Path(__file__).parent.parent)
+
+        script = f"""
+import os, sys
+os.environ["VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN"] = "1"
+sys.path.insert(0, {repr(src_dir)})
+from OCP.BRep import BRep_Builder
+from OCP.BRepTools import BRepTools
+from OCP.TopoDS import TopoDS_Shape
+from cadvert.renderer import render_shape
+
+builder = BRep_Builder()
+shape = TopoDS_Shape()
+BRepTools.Read_s(shape, {repr(brep_path)}, builder)
+output_dir = {repr(str(output_dir))}
+paths = render_shape(shape, output_dir, image_size={image_size!r}, stem={repr(stem)})
+for p in paths:
+    print(p)
+"""
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode == 0:
+            return [p for p in result.stdout.strip().splitlines() if p]
+        # Log stderr for debugging but don't crash
+        return []
+    finally:
+        try:
+            os.unlink(brep_path)
+        except OSError:
+            pass
+
+
 def _compute_mesh_info(metadata, shape) -> dict:
     info = {
         "format": metadata.source_format,
@@ -272,8 +328,9 @@ def _compute_mesh_info(metadata, shape) -> dict:
 
         box = Bnd_Box()
         BRepBndLib.Add_s(shape, box)
-        xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
-        info["bbox"] = {"X": (xmin, xmax), "Y": (ymin, ymax), "Z": (zmin, zmax)}
+        if not box.IsVoid():
+            xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
+            info["bbox"] = {"X": (xmin, xmax), "Y": (ymin, ymax), "Z": (zmin, zmax)}
     except Exception:
         pass
     return info

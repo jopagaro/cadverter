@@ -200,6 +200,8 @@ def _face_area(face: TopoDS_Face) -> float:
 def _bounding_box(shape: TopoDS_Shape) -> dict[str, tuple[float, float]]:
     box = Bnd_Box()
     BRepBndLib.Add_s(shape, box)
+    if box.IsVoid():
+        return {"X": (0.0, 0.0), "Y": (0.0, 0.0), "Z": (0.0, 0.0)}
     xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
     return {"X": (xmin, xmax), "Y": (ymin, ymax), "Z": (zmin, zmax)}
 

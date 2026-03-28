@@ -223,8 +223,9 @@ def _mesh_info(metadata, shape) -> dict:
 
         box = Bnd_Box()
         BRepBndLib.Add_s(shape, box)
-        xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
-        info["bbox"] = {"X": (xmin, xmax), "Y": (ymin, ymax), "Z": (zmin, zmax)}
+        if not box.IsVoid():
+            xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
+            info["bbox"] = {"X": (xmin, xmax), "Y": (ymin, ymax), "Z": (zmin, zmax)}
     except Exception:
         pass
     return info
