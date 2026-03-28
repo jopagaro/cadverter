@@ -790,13 +790,13 @@ async function uploadFile(file) {
   try {
     // Stages with rough timing estimates
     const stages = [
-      [2,  'Loading geometry…'],
-      [8,  'Building topology graph…'],
-      [15, 'Detecting features…'],
-      [25, 'Computing spatial relationships…'],
-      [40, 'Rendering views…'],
-      [60, 'Still working… (large assembly)'],
-      [90, 'Almost there…'],
+      [2,   'Loading geometry…'],
+      [8,   'Building topology graph…'],
+      [30,  'Detecting features…'],
+      [35,  'Computing spatial relationships…'],
+      [90,  'Rendering views…'],
+      [110, 'Still working… (large assembly)'],
+      [150, 'Almost there…'],
     ];
     ticker = setInterval(() => {
       elapsed++;

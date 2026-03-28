@@ -77,11 +77,11 @@ async def convert(file: UploadFile = File(...)):
     try:
         result = await asyncio.wait_for(
             loop.run_in_executor(_executor, _run_pipeline, input_path, session_dir),
-            timeout=180,
+            timeout=600,
         )
     except asyncio.TimeoutError:
         shutil.rmtree(session_dir, ignore_errors=True)
-        raise HTTPException(status_code=422, detail="Processing timed out (file too complex). Try a simpler file or export with fewer bodies.")
+        raise HTTPException(status_code=422, detail="Processing timed out after 10 minutes.")
     except Exception as exc:
         shutil.rmtree(session_dir, ignore_errors=True)
         raise HTTPException(status_code=422, detail=str(exc))
@@ -217,9 +217,7 @@ def _run_pipeline(input_path: Path, session_dir: Path) -> dict:
             except Exception:
                 pass
 
-    # Render views — must run in a subprocess on macOS because VTK's Cocoa
-    # backend (vtkCocoaRenderWindow) requires NSWindow on the main thread.
-    # A subprocess has its own main thread so this restriction doesn't apply.
+    # Render views
     image_paths: list[str] = []
     try:
         render_dir = session_dir / "views"
