@@ -514,6 +514,75 @@
       max-width: 480px;
       text-align: center;
     }
+
+    /* Processing overlay */
+    .processing-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 400;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .processing-overlay.active { display: flex; }
+    .processing-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 36px 48px;
+      text-align: center;
+      min-width: 320px;
+    }
+    .processing-spinner {
+      width: 48px; height: 48px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .processing-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+    .processing-stage {
+      font-size: 13px;
+      color: var(--accent);
+      margin-bottom: 16px;
+      min-height: 18px;
+    }
+    .processing-timer {
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -1px;
+    }
+    .processing-timer-label {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .processing-bar-outer {
+      margin-top: 20px;
+      background: var(--border);
+      border-radius: 4px;
+      height: 4px;
+      overflow: hidden;
+    }
+    .processing-bar-inner {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 4px;
+      transition: width 0.5s ease;
+      width: 0%;
+    }
   </style>
 </head>
 <body>
@@ -633,6 +702,20 @@
 <!-- Error toast -->
 <div class="error-toast" id="errorToast"></div>
 
+<!-- Processing overlay -->
+<div class="processing-overlay" id="processingOverlay">
+  <div class="processing-box">
+    <div class="processing-spinner"></div>
+    <div class="processing-title">Analysing CAD file…</div>
+    <div class="processing-stage" id="processingStage">Uploading…</div>
+    <div class="processing-timer" id="processingTimer">0</div>
+    <div class="processing-timer-label">seconds elapsed</div>
+    <div class="processing-bar-outer">
+      <div class="processing-bar-inner" id="processingBar"></div>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── State ───────────────────────────────────────────────────────────────────
 let sessionId = null;
@@ -697,17 +780,31 @@ async function uploadFile(file) {
   document.getElementById('chatInput').disabled = true;
   document.getElementById('sendBtn').disabled = true;
 
-  setProgress(true, 'Loading file…', 10);
+  showProcessing('Uploading file…', 5);
 
   const form = new FormData();
   form.append('file', file);
 
+  let elapsed = 0;
+  let ticker = null;
   try {
-    let elapsed = 0;
-    const ticker = setInterval(() => {
+    // Stages with rough timing estimates
+    const stages = [
+      [2,  'Loading geometry…'],
+      [8,  'Building topology graph…'],
+      [15, 'Detecting features…'],
+      [25, 'Computing spatial relationships…'],
+      [40, 'Rendering views…'],
+      [60, 'Still working… (large assembly)'],
+      [90, 'Almost there…'],
+    ];
+    ticker = setInterval(() => {
       elapsed++;
-      setProgress(true, `Running pipeline… ${elapsed}s`, 40);
+      const stage = stages.reduce((acc, [t, s]) => elapsed >= t ? s : acc, 'Uploading file…');
+      const pct = Math.min(95, 5 + elapsed * 0.9);
+      showProcessing(stage, pct, elapsed);
     }, 1000);
+
     const res = await fetch('/convert', { method: 'POST', body: form });
     clearInterval(ticker);
 
@@ -716,14 +813,15 @@ async function uploadFile(file) {
       throw new Error(err.detail || 'Conversion failed');
     }
 
-    setProgress(true, 'Rendering document…', 80);
+    showProcessing('Finalising document…', 98, elapsed);
     const data = await res.json();
 
     sessionId = data.session_id;
     hsdText   = data.hsd;
 
-    setProgress(true, 'Done', 100);
-    setTimeout(() => setProgress(false), 600);
+    hideProcessing();
+    setProgress(true, `Done in ${elapsed}s`, 100);
+    setTimeout(() => setProgress(false), 2000);
 
     renderViews(data.images);
     renderInfoCard(data);
@@ -732,9 +830,21 @@ async function uploadFile(file) {
 
   } catch (err) {
     clearInterval(ticker);
+    hideProcessing();
     setProgress(false);
     showToast(err.message);
   }
+}
+
+// ── Processing overlay ────────────────────────────────────────────────────────
+function showProcessing(stage, pct = 0, secs = 0) {
+  document.getElementById('processingOverlay').classList.add('active');
+  document.getElementById('processingStage').textContent = stage;
+  document.getElementById('processingTimer').textContent = secs;
+  document.getElementById('processingBar').style.width = pct + '%';
+}
+function hideProcessing() {
+  document.getElementById('processingOverlay').classList.remove('active');
 }
 
 // ── Progress ─────────────────────────────────────────────────────────────────
