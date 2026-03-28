@@ -139,6 +139,18 @@ async def chat(
     client = AsyncOpenAI(api_key=x_openai_key)
     hsd_text = session["hsd"]
 
+    # GPT-4o has a 128k token limit (~400k chars with overhead).
+    # Truncate large HSD documents to keep the most useful sections
+    # (header, global props, features, spatial) which appear first.
+    MAX_HSD_CHARS = 280_000
+    if len(hsd_text) > MAX_HSD_CHARS:
+        hsd_text = (
+            hsd_text[:MAX_HSD_CHARS]
+            + f"\n\n[HSD TRUNCATED — document too large for context window. "
+            f"{len(session['hsd']) - MAX_HSD_CHARS:,} characters omitted. "
+            f"Global properties, features, and spatial relationships above are complete.]"
+        )
+
     system_msg = (
         "You are an expert mechanical engineer and manufacturing consultant. "
         "You have been given a Hierarchical Spatial Document (HSD) — a machine-readable "
