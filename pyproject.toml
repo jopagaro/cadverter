@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cadvert"
+version = "0.1.0"
+description = "Convert CAD files (STEP) into LLM-readable Hierarchical Spatial Documents"
+requires-python = ">=3.10"
+dependencies = [
+    "cadquery-ocp",
+    "numpy",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+]
+
+[project.scripts]
+cadvert = "cadvert.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cadvert"]
