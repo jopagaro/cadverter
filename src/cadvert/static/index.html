@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CADVERT</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f1117;
+      --surface:  #1a1d27;
+      --border:   #2a2d3e;
+      --accent:   #5b8dee;
+      --accent2:  #7c5cbf;
+      --text:     #e2e8f0;
+      --muted:    #8892a4;
+      --success:  #34d399;
+      --warning:  #fbbf24;
+      --danger:   #f87171;
+      --radius:   10px;
+      --font:     -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      --mono:     'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    }
+
+    html, body { height: 100%; overflow: hidden; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .logo {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .key-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    .key-row label { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+    input[type="password"], input[type="text"], select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 6px 10px;
+      font-size: 13px;
+      font-family: var(--mono);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="password"]:focus, input[type="text"]:focus, select:focus {
+      border-color: var(--accent);
+    }
+    #apiKeyInput { width: 280px; }
+
+    select { background: var(--bg); cursor: pointer; }
+
+    .btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-ghost   { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+
+    /* ── Layout ── */
+    .layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    /* ── Left sidebar ── */
+    .sidebar {
+      width: 280px;
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: 16px;
+      gap: 16px;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    /* Drop zone */
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 24px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+    .dropzone:hover, .dropzone.drag-over {
+      border-color: var(--accent);
+      background: rgba(91, 141, 238, 0.06);
+    }
+    .dropzone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+    .dropzone-icon { font-size: 28px; margin-bottom: 8px; }
+    .dropzone-title { font-size: 13px; font-weight: 500; color: var(--text); }
+    .dropzone-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .dropzone-formats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      justify-content: center;
+      margin-top: 10px;
+    }
+    .fmt-tag {
+      font-size: 10px;
+      font-family: var(--mono);
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(255,255,255,0.07);
+      color: var(--muted);
+    }
+    .fmt-tag.full { color: var(--success); background: rgba(52,211,153,0.1); }
+
+    /* Progress */
+    .progress-wrap { display: none; }
+    .progress-wrap.active { display: block; }
+    .progress-bar-outer {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    .progress-bar-inner {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.4s ease;
+      animation: shimmer 1.5s infinite;
+    }
+    @keyframes shimmer {
+      0%   { opacity: 1; }
+      50%  { opacity: 0.7; }
+      100% { opacity: 1; }
+    }
+    .progress-label { font-size: 12px; color: var(--muted); }
+
+    /* Part info */
+    .info-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      display: none;
+    }
+    .info-card.visible { display: block; }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 3px 0;
+      font-size: 12px;
+    }
+    .info-row .key { color: var(--muted); }
+    .info-row .val { color: var(--text); font-family: var(--mono); font-size: 11px; }
+    .badge {
+      display: inline-block;
+      padding: 1px 7px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .badge-blue   { background: rgba(91,141,238,0.2); color: var(--accent); }
+    .badge-green  { background: rgba(52,211,153,0.15); color: var(--success); }
+    .badge-orange { background: rgba(251,191,36,0.15); color: var(--warning); }
+
+    /* Feature pills */
+    .feature-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+    .feature-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      padding: 3px 6px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 5px;
+    }
+    .feature-row .fname { color: var(--muted); }
+    .feature-row .fcount { color: var(--text); font-family: var(--mono); }
+
+    /* HSD toggle */
+    .hsd-toggle {
+      font-size: 11px;
+      color: var(--accent);
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    /* ── Right panel ── */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    /* Views strip */
+    .views-strip {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      flex-shrink: 0;
+      min-height: 80px;
+      align-items: center;
+    }
+    .views-strip:empty::before {
+      content: "Rendered views will appear here after upload";
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .view-thumb {
+      flex-shrink: 0;
+      cursor: pointer;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 2px solid transparent;
+      transition: border-color 0.15s;
+    }
+    .view-thumb:hover { border-color: var(--accent); }
+    .view-thumb img { display: block; height: 72px; width: auto; }
+    .view-label {
+      font-size: 9px;
+      text-align: center;
+      padding: 2px 4px;
+      color: var(--muted);
+      background: var(--bg);
+    }
+
+    /* Lightbox */
+    .lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      cursor: zoom-out;
+    }
+    .lightbox.open { display: flex; }
+    .lightbox img { max-width: 90vw; max-height: 90vh; border-radius: 8px; }
+
+    /* Chat area */
+    .chat-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      scroll-behavior: smooth;
+    }
+
+    .msg {
+      display: flex;
+      gap: 10px;
+      max-width: 820px;
+    }
+    .msg.user { flex-direction: row-reverse; align-self: flex-end; }
+
+    .msg-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .msg.assistant .msg-avatar { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; }
+    .msg.user .msg-avatar { background: var(--border); color: var(--muted); }
+
+    .msg-bubble {
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 13px;
+      line-height: 1.6;
+      max-width: 680px;
+    }
+    .msg.assistant .msg-bubble {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-top-left-radius: 4px;
+    }
+    .msg.user .msg-bubble {
+      background: var(--accent);
+      color: #fff;
+      border-top-right-radius: 4px;
+    }
+    .msg-bubble pre {
+      background: rgba(0,0,0,0.3);
+      border-radius: 6px;
+      padding: 10px;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: 12px;
+      margin: 8px 0;
+      white-space: pre-wrap;
+    }
+    .msg-bubble code {
+      font-family: var(--mono);
+      font-size: 12px;
+      background: rgba(0,0,0,0.25);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+    .msg-bubble p { margin: 4px 0; }
+    .msg-bubble ul, .msg-bubble ol { margin: 6px 0 6px 20px; }
+
+    .typing-dot {
+      display: inline-block;
+      width: 6px; height: 6px;
+      background: var(--muted);
+      border-radius: 50%;
+      animation: blink 1.2s infinite;
+      margin: 0 2px;
+    }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes blink { 0%,80%,100% { opacity: 0.2; } 40% { opacity: 1; } }
+
+    /* Input bar */
+    .input-bar {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    #chatInput {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 10px 14px;
+      font-size: 14px;
+      font-family: var(--font);
+      resize: none;
+      outline: none;
+      transition: border-color 0.15s;
+      max-height: 120px;
+      min-height: 42px;
+      overflow-y: auto;
+    }
+    #chatInput:focus { border-color: var(--accent); }
+    #chatInput:disabled { opacity: 0.5; cursor: not-allowed; }
+    #sendBtn { align-self: flex-end; }
+
+    /* HSD modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      width: min(90vw, 820px);
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-title { font-weight: 600; font-size: 14px; }
+    .modal-close { cursor: pointer; color: var(--muted); font-size: 18px; line-height: 1; }
+    .modal-close:hover { color: var(--text); }
+    .modal-body { padding: 16px 18px; overflow-y: auto; flex: 1; }
+    .hsd-text {
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.7;
+      color: #c9d1d9;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+    /* Empty chat state */
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--muted);
+      text-align: center;
+      padding: 40px;
+    }
+    .empty-icon { font-size: 40px; opacity: 0.4; }
+    .empty-title { font-size: 16px; font-weight: 500; color: var(--text); opacity: 0.5; }
+    .empty-sub { font-size: 13px; max-width: 320px; }
+    .suggestion-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 8px;
+    }
+    .chip {
+      padding: 6px 12px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--muted);
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .chip:hover { border-color: var(--accent); color: var(--accent); }
+
+    .error-toast {
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--danger);
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      z-index: 300;
+      display: none;
+      max-width: 480px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="logo">⬡ CADVERT</div>
+  <span style="color:var(--muted);font-size:12px;">CAD → LLM-readable document</span>
+  <div class="key-row">
+    <label for="apiKeyInput">OpenAI API Key</label>
+    <input type="password" id="apiKeyInput" placeholder="sk-..." autocomplete="off">
+    <select id="modelSelect">
+      <option value="gpt-4o">GPT-4o</option>
+      <option value="gpt-4o-mini">GPT-4o mini</option>
+      <option value="o1">o1</option>
+    </select>
+    <button class="btn btn-ghost" onclick="saveKey()">Save</button>
+  </div>
+</header>
+
+<!-- Layout -->
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div>
+      <div class="section-label">Upload File</div>
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="fileInput" accept=".step,.stp,.iges,.igs,.brep,.stl,.obj">
+        <div class="dropzone-icon">📁</div>
+        <div class="dropzone-title">Drop file or click to browse</div>
+        <div class="dropzone-sub">Any supported CAD format</div>
+        <div class="dropzone-formats">
+          <span class="fmt-tag full">.step</span>
+          <span class="fmt-tag full">.stp</span>
+          <span class="fmt-tag full">.iges</span>
+          <span class="fmt-tag full">.igs</span>
+          <span class="fmt-tag full">.brep</span>
+          <span class="fmt-tag">.stl</span>
+          <span class="fmt-tag">.obj</span>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:8px;">
+          <span style="color:var(--success)">■</span> full analysis &nbsp;
+          <span style="color:var(--muted)">■</span> mesh (views only)
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar-outer">
+        <div class="progress-bar-inner" id="progressBar"></div>
+      </div>
+      <div class="progress-label" id="progressLabel">Processing…</div>
+    </div>
+
+    <!-- Info card -->
+    <div class="info-card" id="infoCard">
+      <div class="section-label" style="margin-bottom:10px;">Part Info</div>
+      <div id="infoRows"></div>
+      <div id="featureList" class="feature-list" style="margin-top:10px;"></div>
+      <div style="margin-top:12px;">
+        <span class="hsd-toggle" onclick="openHSD()">View raw HSD document →</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- Views strip -->
+    <div class="views-strip" id="viewsStrip"></div>
+
+    <!-- Chat -->
+    <div class="chat-wrap">
+      <div class="messages" id="messages">
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon">🔩</div>
+          <div class="empty-title">Upload a CAD file to start</div>
+          <div class="empty-sub">Then ask anything about the part — dimensions, features, manufacturability, tolerances.</div>
+          <div class="suggestion-chips" id="chips" style="display:none">
+            <div class="chip" onclick="sendChip(this)">What are the hole diameters?</div>
+            <div class="chip" onclick="sendChip(this)">What is the overall bounding box?</div>
+            <div class="chip" onclick="sendChip(this)">List all detected features</div>
+            <div class="chip" onclick="sendChip(this)">Is this part machinable from one side?</div>
+            <div class="chip" onclick="sendChip(this)">What is the thinnest wall?</div>
+          </div>
+        </div>
+      </div>
+      <div class="input-bar">
+        <textarea id="chatInput" placeholder="Ask about this part…" rows="1" disabled
+          onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        <button class="btn btn-primary" id="sendBtn" onclick="sendMessage()" disabled>Send</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightboxImg" src="" alt="">
+</div>
+
+<!-- HSD Modal -->
+<div class="modal-overlay" id="hsdModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">Hierarchical Spatial Document (HSD)</div>
+      <div class="modal-close" onclick="closeHSD()">✕</div>
+    </div>
+    <div class="modal-body">
+      <pre class="hsd-text" id="hsdContent"></pre>
+    </div>
+  </div>
+</div>
+
+<!-- Error toast -->
+<div class="error-toast" id="errorToast"></div>
+
+<script>
+// ── State ───────────────────────────────────────────────────────────────────
+let sessionId = null;
+let hsdText = '';
+let chatHistory = [];   // [{role, content}]
+let streaming = false;
+
+// ── Init ────────────────────────────────────────────────────────────────────
+(function init() {
+  const savedKey = localStorage.getItem('cadvert_api_key');
+  if (savedKey) document.getElementById('apiKeyInput').value = savedKey;
+
+  const savedModel = localStorage.getItem('cadvert_model');
+  if (savedModel) document.getElementById('modelSelect').value = savedModel;
+
+  // Drag and drop
+  const dz = document.getElementById('dropzone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault();
+    dz.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) uploadFile(f);
+  });
+  document.getElementById('fileInput').addEventListener('change', e => {
+    if (e.target.files[0]) uploadFile(e.target.files[0]);
+  });
+})();
+
+// ── API key ─────────────────────────────────────────────────────────────────
+function saveKey() {
+  const key = document.getElementById('apiKeyInput').value.trim();
+  if (key) {
+    localStorage.setItem('cadvert_api_key', key);
+    localStorage.setItem('cadvert_model', document.getElementById('modelSelect').value);
+    showToast('API key saved to browser storage', 'success');
+  }
+}
+
+function getKey() {
+  return document.getElementById('apiKeyInput').value.trim();
+}
+
+// ── File upload ──────────────────────────────────────────────────────────────
+async function uploadFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  const supported = ['step','stp','iges','igs','brep','stl','obj'];
+  if (!supported.includes(ext)) {
+    showToast(`Unsupported file type .${ext} — supported: ${supported.join(', ')}`);
+    return;
+  }
+
+  // Reset state
+  sessionId = null;
+  hsdText = '';
+  chatHistory = [];
+  document.getElementById('viewsStrip').innerHTML = '';
+  document.getElementById('messages').innerHTML = '';
+  document.getElementById('emptyState') && document.getElementById('messages').appendChild(createEmptyState());
+  document.getElementById('infoCard').classList.remove('visible');
+  document.getElementById('chatInput').disabled = true;
+  document.getElementById('sendBtn').disabled = true;
+
+  setProgress(true, 'Loading file…', 10);
+
+  const form = new FormData();
+  form.append('file', file);
+
+  try {
+    setProgress(true, 'Running pipeline…', 40);
+    const res = await fetch('/convert', { method: 'POST', body: form });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Conversion failed');
+    }
+
+    setProgress(true, 'Rendering document…', 80);
+    const data = await res.json();
+
+    sessionId = data.session_id;
+    hsdText   = data.hsd;
+
+    setProgress(true, 'Done', 100);
+    setTimeout(() => setProgress(false), 600);
+
+    renderViews(data.images);
+    renderInfoCard(data);
+    enableChat();
+    addSystemMsg(data);
+
+  } catch (err) {
+    setProgress(false);
+    showToast(err.message);
+  }
+}
+
+// ── Progress ─────────────────────────────────────────────────────────────────
+function setProgress(active, label = '', pct = 0) {
+  const wrap = document.getElementById('progressWrap');
+  const bar  = document.getElementById('progressBar');
+  const lbl  = document.getElementById('progressLabel');
+  wrap.classList.toggle('active', active);
+  bar.style.width = pct + '%';
+  lbl.textContent = label;
+}
+
+// ── Views ────────────────────────────────────────────────────────────────────
+function renderViews(images) {
+  const strip = document.getElementById('viewsStrip');
+  strip.innerHTML = '';
+  if (!images || !images.length) return;
+
+  images.forEach(img => {
+    const wrap = document.createElement('div');
+    wrap.className = 'view-thumb';
+    wrap.innerHTML = `<img src="${img.data}" alt="${img.name}">
+                      <div class="view-label">${img.name}</div>`;
+    wrap.addEventListener('click', () => openLightbox(img.data));
+    strip.appendChild(wrap);
+  });
+}
+
+// ── Info card ────────────────────────────────────────────────────────────────
+function renderInfoCard(data) {
+  const card = document.getElementById('infoCard');
+  const rows = document.getElementById('infoRows');
+  const feats = document.getElementById('featureList');
+  const s = data.summary || {};
+
+  const fmtRow = (k, v) => `<div class="info-row">
+    <span class="key">${k}</span><span class="val">${v}</span></div>`;
+  const badge = (txt, cls) => `<span class="badge badge-${cls}">${txt}</span>`;
+
+  let html = fmtRow('File', escHtml(data.filename));
+  html += fmtRow('Format', badge(data.format, data.is_mesh ? 'orange' : 'blue'));
+  if (s.schema) html += fmtRow('Schema', escHtml(s.schema));
+  html += fmtRow('Units', data.units);
+  if (!data.is_mesh) {
+    if (s.faces !== undefined) html += fmtRow('Faces', s.faces);
+    if (s.edges !== undefined) html += fmtRow('Edges', s.edges);
+    if (s.bodies !== undefined) html += fmtRow('Bodies', s.bodies);
+    if (s.gdt_count) html += fmtRow('GD&T', s.gdt_count + ' annotations');
+  } else {
+    html += fmtRow('Triangles', (s.triangles || 0).toLocaleString());
+    html += fmtRow('Analysis', badge('mesh only', 'orange'));
+  }
+  rows.innerHTML = html;
+
+  feats.innerHTML = '';
+  if (s.features && Object.keys(s.features).length) {
+    const title = document.createElement('div');
+    title.className = 'section-label';
+    title.textContent = 'Detected Features';
+    feats.appendChild(title);
+    for (const [k, v] of Object.entries(s.features)) {
+      feats.innerHTML += `<div class="feature-row">
+        <span class="fname">${k.replace('_', ' ')}</span>
+        <span class="fcount">${v}</span>
+      </div>`;
+    }
+  }
+
+  card.classList.add('visible');
+}
+
+// ── Chat enable ───────────────────────────────────────────────────────────────
+function enableChat() {
+  document.getElementById('chatInput').disabled = false;
+  document.getElementById('sendBtn').disabled = false;
+  document.getElementById('chatInput').focus();
+}
+
+function addSystemMsg(data) {
+  const msgs = document.getElementById('messages');
+  // Remove empty state
+  const es = msgs.querySelector('.empty-state');
+  if (es) es.remove();
+
+  let content = `**${escHtml(data.filename)}** processed successfully.\n`;
+  if (data.is_mesh) {
+    content += `Format: ${data.format} (mesh — topology and feature analysis unavailable).\n`;
+    content += `You can ask about the overall shape, size, and rendered views.`;
+  } else {
+    const s = data.summary || {};
+    content += `${s.faces || 0} faces · ${s.edges || 0} edges · units: ${data.units}`;
+    if (s.features && Object.keys(s.features).length) {
+      const fstr = Object.entries(s.features).map(([k,v]) => `${v} ${k.toLowerCase().replace('_',' ')}`).join(', ');
+      content += `\nFeatures: ${fstr}`;
+    }
+    content += `\n\nAsk me anything about this part.`;
+  }
+
+  appendMessage('assistant', content);
+
+  // Show suggestion chips
+  const chips = document.getElementById('chips');
+  if (chips) chips.style.display = 'flex';
+}
+
+// ── Send message ──────────────────────────────────────────────────────────────
+async function sendMessage() {
+  if (streaming) return;
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  if (!sessionId) { showToast('Upload a CAD file first'); return; }
+
+  const key = getKey();
+  if (!key) { showToast('Enter your OpenAI API key in the header'); return; }
+
+  input.value = '';
+  autoResize(input);
+
+  chatHistory.push({ role: 'user', content: text });
+  appendMessage('user', text);
+
+  const typingId = appendTyping();
+  streaming = true;
+  document.getElementById('sendBtn').disabled = true;
+  document.getElementById('chatInput').disabled = true;
+
+  try {
+    const res = await fetch(`/chat/${sessionId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-OpenAI-Key': key,
+        'X-Model': document.getElementById('modelSelect').value,
+      },
+      body: JSON.stringify({ messages: chatHistory }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Chat request failed');
+    }
+
+    removeTyping(typingId);
+    const assistantMsg = appendMessage('assistant', '');
+    let fullText = '';
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const lines = decoder.decode(value).split('\n');
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6);
+        if (payload === '[DONE]') break;
+        try {
+          const obj = JSON.parse(payload);
+          if (obj.error) throw new Error(obj.error);
+          if (obj.content) {
+            fullText += obj.content;
+            assistantMsg.querySelector('.msg-bubble').innerHTML = renderMarkdown(fullText);
+            scrollToBottom();
+          }
+        } catch (e) {
+          if (e.message !== 'Unexpected end of JSON input') throw e;
+        }
+      }
+    }
+
+    chatHistory.push({ role: 'assistant', content: fullText });
+
+  } catch (err) {
+    removeTyping(typingId);
+    appendMessage('assistant', `Error: ${err.message}`);
+  } finally {
+    streaming = false;
+    document.getElementById('sendBtn').disabled = false;
+    document.getElementById('chatInput').disabled = false;
+    document.getElementById('chatInput').focus();
+  }
+}
+
+function sendChip(el) {
+  const text = el.textContent;
+  document.getElementById('chatInput').value = text;
+  // Hide chips
+  const chips = document.getElementById('chips');
+  if (chips) chips.style.display = 'none';
+  sendMessage();
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+// ── Message rendering ─────────────────────────────────────────────────────────
+function appendMessage(role, content) {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  div.innerHTML = `
+    <div class="msg-avatar">${role === 'assistant' ? 'AI' : 'You'}</div>
+    <div class="msg-bubble">${renderMarkdown(content)}</div>
+  `;
+  msgs.appendChild(div);
+  scrollToBottom();
+  return div;
+}
+
+function appendTyping() {
+  const id = 'typing-' + Date.now();
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.id = id;
+  div.className = 'msg assistant';
+  div.innerHTML = `<div class="msg-avatar">AI</div>
+    <div class="msg-bubble">
+      <span class="typing-dot"></span>
+      <span class="typing-dot"></span>
+      <span class="typing-dot"></span>
+    </div>`;
+  msgs.appendChild(div);
+  scrollToBottom();
+  return id;
+}
+
+function removeTyping(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+function createEmptyState() {
+  const div = document.createElement('div');
+  div.className = 'empty-state';
+  div.id = 'emptyState';
+  div.innerHTML = `
+    <div class="empty-icon">🔩</div>
+    <div class="empty-title">Upload a CAD file to start</div>
+    <div class="empty-sub">Then ask anything about the part — dimensions, features, manufacturability, tolerances.</div>
+    <div class="suggestion-chips" id="chips" style="display:none">
+      <div class="chip" onclick="sendChip(this)">What are the hole diameters?</div>
+      <div class="chip" onclick="sendChip(this)">What is the overall bounding box?</div>
+      <div class="chip" onclick="sendChip(this)">List all detected features</div>
+      <div class="chip" onclick="sendChip(this)">Is this part machinable from one side?</div>
+      <div class="chip" onclick="sendChip(this)">What is the thinnest wall?</div>
+    </div>`;
+  return div;
+}
+
+function scrollToBottom() {
+  const msgs = document.getElementById('messages');
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+// ── Minimal markdown renderer ─────────────────────────────────────────────────
+function renderMarkdown(text) {
+  if (!text) return '';
+  let s = escHtml(text);
+  // Code blocks
+  s = s.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+  // Inline code
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Bold
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  // Italic
+  s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  // Lines → paragraphs
+  s = s.split('\n').map(l => {
+    if (l.startsWith('  - ') || l.startsWith('- ')) return `<li>${l.replace(/^-?\s*-?\s*/, '')}</li>`;
+    return l;
+  }).join('\n');
+  s = s.replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`);
+  s = s.replace(/\n{2,}/g, '</p><p>');
+  s = s.replace(/\n/g, '<br>');
+  s = `<p>${s}</p>`;
+  s = s.replace(/<p><\/p>/g, '');
+  return s;
+}
+
+function escHtml(t) {
+  return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Lightbox ──────────────────────────────────────────────────────────────────
+function openLightbox(src) {
+  document.getElementById('lightboxImg').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+}
+
+// ── HSD modal ─────────────────────────────────────────────────────────────────
+function openHSD() {
+  document.getElementById('hsdContent').textContent = hsdText;
+  document.getElementById('hsdModal').classList.add('open');
+}
+function closeHSD() {
+  document.getElementById('hsdModal').classList.remove('open');
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, type = 'error') {
+  const t = document.getElementById('errorToast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  t.style.background = type === 'success' ? 'var(--success)' : 'var(--danger)';
+  t.style.color = type === 'success' ? '#000' : '#fff';
+  setTimeout(() => { t.style.display = 'none'; }, 4000);
+}
+
+// ── Auto-resize textarea ──────────────────────────────────────────────────────
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+</script>
+</body>
+</html>
