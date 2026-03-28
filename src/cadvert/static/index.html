@@ -703,8 +703,13 @@ async function uploadFile(file) {
   form.append('file', file);
 
   try {
-    setProgress(true, 'Running pipeline…', 40);
+    let elapsed = 0;
+    const ticker = setInterval(() => {
+      elapsed++;
+      setProgress(true, `Running pipeline… ${elapsed}s`, 40);
+    }, 1000);
     const res = await fetch('/convert', { method: 'POST', body: form });
+    clearInterval(ticker);
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -726,6 +731,7 @@ async function uploadFile(file) {
     addSystemMsg(data);
 
   } catch (err) {
+    clearInterval(ticker);
     setProgress(false);
     showToast(err.message);
   }
@@ -748,11 +754,12 @@ function renderViews(images) {
   if (!images || !images.length) return;
 
   images.forEach(img => {
+    const src = img.url || img.data;
     const wrap = document.createElement('div');
     wrap.className = 'view-thumb';
-    wrap.innerHTML = `<img src="${img.data}" alt="${img.name}">
+    wrap.innerHTML = `<img src="${src}" alt="${img.name}">
                       <div class="view-label">${img.name}</div>`;
-    wrap.addEventListener('click', () => openLightbox(img.data));
+    wrap.addEventListener('click', () => openLightbox(src));
     strip.appendChild(wrap);
   });
 }

@@ -37,6 +37,8 @@ class SpatialRelationship:
 # Public entry point
 # ---------------------------------------------------------------------------
 
+_MAX_LOCATING = 80   # cap O(n²) pair computations to keep runtime under ~5s
+
 def compute_spatial_relationships(
     graph: TopologyGraph,
     features: list[DetectedFeature],
@@ -50,7 +52,7 @@ def compute_spatial_relationships(
     holes  = [f for f in features if f.feature_type in ("THROUGH_HOLE", "BLIND_HOLE")]
     bosses = [f for f in features if f.feature_type == "BOSS"]
     cbores = [f for f in features if f.feature_type == "COUNTERBORE"]
-    all_locating = holes + bosses + cbores
+    all_locating = (holes + bosses + cbores)[:_MAX_LOCATING]
 
     # ── 1. Feature-to-feature distances (all types) ───────────────────────────
     rels += _feature_to_feature(all_locating)
@@ -60,7 +62,7 @@ def compute_spatial_relationships(
 
     # ── 3. Min surface clearance (BRepExtrema, needs OCC shape) ───────────────
     if shape is not None:
-        rels += _min_surface_clearances(features, graph, shape)
+        rels += _min_surface_clearances(features[:_MAX_LOCATING], graph, shape)
 
     # ── 4. Draft angle analysis ───────────────────────────────────────────────
     rels += _draft_angle_analysis(graph, normalize(pull_direction))
@@ -247,7 +249,7 @@ def _draft_angle_analysis(
     Faces below ~1° draft on non-trivial parts may cause ejection problems.
     """
     rels = []
-    for face in graph.faces:
+    for face in graph.faces[:2000]:  # cap at 2000 faces for large assemblies
         g = face.geometry
         if g.get("type") != "PLANE":
             continue
@@ -285,7 +287,7 @@ def _undercut_detection(
     """
     rels = []
     undercut_faces = []
-    for face in graph.faces:
+    for face in graph.faces[:2000]:  # cap at 2000 faces for large assemblies
         g = face.geometry
         if g.get("type") not in ("PLANE", "CYLINDER", "CONE"):
             continue

@@ -9,7 +9,6 @@ Endpoints:
 
 from __future__ import annotations
 import asyncio
-import base64
 import json
 import shutil
 import tempfile
@@ -20,6 +19,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -36,6 +36,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve rendered images directly as static files
+app.mount("/sessions", StaticFiles(directory=str(UPLOAD_DIR)), name="sessions")
 
 _executor = ThreadPoolExecutor(max_workers=2)
 
@@ -72,22 +75,27 @@ async def convert(file: UploadFile = File(...)):
 
     loop = asyncio.get_event_loop()
     try:
-        result = await loop.run_in_executor(
-            _executor, _run_pipeline, input_path, session_dir
+        result = await asyncio.wait_for(
+            loop.run_in_executor(_executor, _run_pipeline, input_path, session_dir),
+            timeout=180,
         )
+    except asyncio.TimeoutError:
+        shutil.rmtree(session_dir, ignore_errors=True)
+        raise HTTPException(status_code=422, detail="Processing timed out (file too complex). Try a simpler file or export with fewer bodies.")
     except Exception as exc:
         shutil.rmtree(session_dir, ignore_errors=True)
         raise HTTPException(status_code=422, detail=str(exc))
 
     _sessions[session_id] = result
 
-    # Encode images as base64 data URIs
+    # Return image URLs (served as static files) instead of base64 blobs
     images = []
     for img_path_str in result.get("image_paths", []):
         p = Path(img_path_str)
         if p.exists():
-            b64 = base64.b64encode(p.read_bytes()).decode()
-            images.append({"name": p.stem, "data": f"data:image/png;base64,{b64}"})
+            # URL: /sessions/<session_id>/views/<filename>
+            rel = p.relative_to(UPLOAD_DIR)
+            images.append({"name": p.stem, "url": f"/sessions/{rel.as_posix()}"})
 
     return JSONResponse({
         "session_id": session_id,
