@@ -197,12 +197,14 @@ def _run_pipeline(input_path: Path, session_dir: Path) -> dict:
         from .topology import build_topology
         graph = build_topology(shape, body_count)
 
-        try:
-            from .validate import validate_extraction, format_validation_report
-            val = validate_extraction(shape, graph)
-            validation_text = format_validation_report(val)
-        except Exception:
-            pass
+        # Skip validation for large assemblies — O(n) per face is too slow above ~200 faces
+        if len(graph.faces) <= 200:
+            try:
+                from .validate import validate_extraction, format_validation_report
+                val = validate_extraction(shape, graph)
+                validation_text = format_validation_report(val)
+            except Exception:
+                pass
 
         try:
             from .features import detect_features
