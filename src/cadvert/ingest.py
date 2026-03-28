@@ -138,10 +138,46 @@ def _load_step(path: Path) -> tuple[TopoDS_Shape, int, PartMetadata]:
     if shape is None or shape.IsNull():
         raise IngestError(f"No usable shape in STEP file: {path}")
 
+    # Check for FACETED_BREP: OCC loads it without error but finds 0 faces
+    # because FACETED_BREP uses POLY_LOOP entities, not ADVANCED_FACE.
+    # This is common in AI-generated STEP files (ChatGPT, etc.).
+    face_count = _count_faces(shape)
+    if face_count == 0:
+        # Check if file contains FACETED_BREP to give a specific message
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if "FACETED_BREP" in text or "POLY_LOOP" in text:
+                raise IngestError(
+                    "This STEP file uses FACETED_BREP geometry (polygon mesh in STEP format), "
+                    "which CADVERT cannot analyse for exact dimensions or features.\n\n"
+                    "This is common with AI-generated STEP files (e.g. from ChatGPT).\n\n"
+                    "To get full analysis, export a proper STEP file from a real CAD tool: "
+                    "FreeCAD, Fusion 360, SolidWorks, Onshape, or CATIA."
+                )
+        except IngestError:
+            raise
+        except Exception:
+            pass
+        raise IngestError(
+            f"STEP file loaded but contains no geometry faces. "
+            f"The file may be empty, use an unsupported geometry type, or be corrupt."
+        )
+
     body_count = _count_bodies(shape)
     meta = _parse_step_metadata(path)
     meta.source_format = "STEP"
     return shape, body_count, meta
+
+
+def _count_faces(shape) -> int:
+    from OCP.TopExp import TopExp_Explorer
+    from OCP.TopAbs import TopAbs_FACE
+    count = 0
+    exp = TopExp_Explorer(shape, TopAbs_FACE)
+    while exp.More():
+        count += 1
+        exp.Next()
+    return count
 
 
 def _load_iges(path: Path) -> tuple[TopoDS_Shape, int, PartMetadata]:
