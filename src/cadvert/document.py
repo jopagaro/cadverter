@@ -599,6 +599,206 @@ def _views_section(paths: list[Path]) -> list[str]:
 # NURBS detail block (appended to NURBS faces for full lossless dump)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Tier 0 — compact executive summary (always in LLM system prompt, <15KB)
+# ---------------------------------------------------------------------------
+
+_FEATURE_SLUG: dict[str, str] = {
+    "THROUGH_HOLE": "hole",
+    "BLIND_HOLE":   "hole",
+    "BOSS":         "boss",
+    "FILLET":       "fillet",
+    "CHAMFER":      "chamfer",
+    "POCKET":       "pocket",
+    "COUNTERBORE":  "counterbore",
+    "COUNTERSINK":  "countersink",
+    "SLOT":         "slot",
+    "PATTERN":      "pattern",
+}
+
+
+def assign_feature_ids(features: list) -> list[str]:
+    """Return a stable ID string for each feature, e.g. 'hole_1', 'fillet_3'."""
+    counts: dict[str, int] = {}
+    ids: list[str] = []
+    for feat in features:
+        slug = _FEATURE_SLUG.get(feat.feature_type, feat.feature_type.lower())
+        counts[slug] = counts.get(slug, 0) + 1
+        ids.append(f"{slug}_{counts[slug]}")
+    return ids
+
+
+def render_tier0(
+    graph,
+    source_path,
+    feature_ids: list[str] | None = None,
+    features: list | None = None,
+    spatial: list | None = None,
+    units: str = "mm",
+    gdt_annotations: list | None = None,
+    mesh_info: dict | None = None,
+    validation_report: str | None = None,
+) -> str:
+    """Compact executive summary for the LLM system prompt.
+
+    Target size: under 5 KB for simple parts, under 15 KB for complex assemblies.
+    This is the *only* thing placed in the system prompt by default.
+    The LLM drills into full geometry via tool calls when needed.
+    """
+    from collections import Counter
+    source_path = Path(source_path)
+    is_mesh = mesh_info is not None
+    lines: list[str] = []
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    lines.append(f"PART: {source_path.stem}")
+    lines.append(f"FILE: {source_path.name}  |  UNITS: {units}")
+    if is_mesh:
+        lines.append(f"FORMAT: {mesh_info.get('format', 'MESH')} "
+                     "(triangulated mesh — no exact analytical geometry)")
+    else:
+        lines.append("PRECISION: exact B-REP analytical geometry")
+    lines.append("")
+
+    # ── Global properties ─────────────────────────────────────────────────────
+    lines.append("[GLOBAL PROPERTIES]")
+    if is_mesh:
+        tri = mesh_info.get("triangle_count", 0)
+        lines.append(f"Triangles: {tri:,}")
+        if "bbox" in mesh_info:
+            bb = mesh_info["bbox"]
+            lines.append(
+                f"Bbox: X[{fmt(bb['X'][0])},{fmt(bb['X'][1])}]"
+                f"  Y[{fmt(bb['Y'][0])},{fmt(bb['Y'][1])}]"
+                f"  Z[{fmt(bb['Z'][0])},{fmt(bb['Z'][1])}]"
+            )
+        if "volume" in mesh_info:
+            lines.append(f"Volume: ~{mesh_info['volume']:,.1f} {units}³")
+        if "surface_area" in mesh_info:
+            lines.append(f"Area:   ~{mesh_info['surface_area']:,.1f} {units}²")
+    elif graph is not None:
+        bb = graph.bounding_box
+        lines.append(
+            f"Bodies: {graph.body_count}  |  Faces: {len(graph.faces)}"
+            f"  |  Edges: {len(graph.edges)}"
+        )
+        lines.append(
+            f"Bbox: X[{fmt(bb['X'][0])},{fmt(bb['X'][1])}]"
+            f"  Y[{fmt(bb['Y'][0])},{fmt(bb['Y'][1])}]"
+            f"  Z[{fmt(bb['Z'][0])},{fmt(bb['Z'][1])}]"
+        )
+        lines.append(
+            f"Volume: {graph.volume:,.1f} {units}³  |  "
+            f"Area: {graph.surface_area:,.1f} {units}²"
+        )
+        lines.append(f"CoM: {fmt_pt(graph.center_of_mass)}")
+        # Face type census — counts only, no face-by-face detail
+        type_counts = Counter(f.geometry.get("type", "OTHER") for f in graph.faces)
+        census = "  ".join(
+            f"{c}×{t.lower()}"
+            for t, c in sorted(type_counts.items(), key=lambda x: -x[1])
+        )
+        lines.append(f"Face types: {census}")
+    lines.append("")
+
+    # ── Features ──────────────────────────────────────────────────────────────
+    if features:
+        fids = feature_ids if feature_ids is not None else assign_feature_ids(features)
+        regular = [(fid, f) for fid, f in zip(fids, features) if f.feature_type != "PATTERN"]
+        patterns = [(fid, f) for fid, f in zip(fids, features) if f.feature_type == "PATTERN"]
+        lines.append(
+            f"[FEATURES — {len(features)} total"
+            + (" | use get_feature(id) for full geometry" if not is_mesh else "")
+            + "]"
+        )
+        for fid, feat in regular + patterns:
+            lines.append(_tier0_feature_line(fid, feat, units))
+        lines.append("")
+
+    # ── Spatial relationships ─────────────────────────────────────────────────
+    if spatial:
+        lines.append("[SPATIAL RELATIONSHIPS]")
+        for rel in spatial:
+            note = f" [{rel.notes}]" if rel.notes else ""
+            lines.append(
+                f"  {rel.description}: {rel.from_ref} → {rel.to_ref}"
+                f" = {fmt(rel.value)} {units}{note}"
+            )
+        lines.append("")
+
+    # ── GD&T ─────────────────────────────────────────────────────────────────
+    if gdt_annotations:
+        lines.append(f"[GD&T — {len(gdt_annotations)} annotations, AP242 PMI]")
+        for a in gdt_annotations:
+            lines.append(f"  {a.symbol}")
+        lines.append("")
+
+    # ── Validation summary (one line only) ───────────────────────────────────
+    if validation_report:
+        first = validation_report.strip().splitlines()[0]
+        if first:
+            lines.append(f"[VALIDATION] {first}")
+            lines.append("")
+
+    # ── Tools notice (B-REP only) ────────────────────────────────────────────
+    if not is_mesh and graph is not None:
+        lines.append("[TOOLS AVAILABLE — call to drill into full geometry]")
+        lines.append("  get_feature(feature_id)   — full faces/edges for one feature")
+        lines.append("  get_face(face_id)          — exact surface geometry for F##")
+        lines.append("  get_edge(edge_id)          — curve geometry for E##")
+        lines.append("  measure_distance(a, b)     — exact min distance between entities")
+        lines.append("  get_neighbors(face_id)     — faces adjacent to F##")
+        lines.append("  search_faces(...)          — find faces by type/radius/area")
+
+    return "\n".join(lines)
+
+
+def _tier0_feature_line(fid: str, feat, units: str) -> str:
+    p = feat.parameters
+    t = feat.feature_type
+    if t == "THROUGH_HOLE":
+        sm = f"  [{feat.standard_match}]" if feat.standard_match else ""
+        return (f"  {fid}: THROUGH HOLE  d={fmt(p['diameter'])}{units}"
+                f"  depth={fmt(p['depth'])}{units}"
+                f"  axis={fmt_vec(p['axis'])}  at {fmt_pt(p['axis_origin'])}{sm}")
+    if t == "BLIND_HOLE":
+        sm = f"  [{feat.standard_match}]" if feat.standard_match else ""
+        return (f"  {fid}: BLIND HOLE    d={fmt(p['diameter'])}{units}"
+                f"  depth={fmt(p['depth'])}{units}"
+                f"  axis={fmt_vec(p['axis'])}  at {fmt_pt(p['axis_origin'])}{sm}")
+    if t == "BOSS":
+        sm = f"  [{feat.standard_match}]" if feat.standard_match else ""
+        return (f"  {fid}: BOSS          d={fmt(p['diameter'])}{units}"
+                f"  h={fmt(p['height'])}{units}"
+                f"  axis={fmt_vec(p['axis'])}{sm}")
+    if t == "FILLET":
+        adj = ",".join(f"F{x}" for x in p.get("adjacent_face_ids", [])[:2])
+        return f"  {fid}: FILLET        r={fmt(p['radius'])}{units}  between {adj}"
+    if t == "CHAMFER":
+        w = f"{fmt(p['width'])}{units}" if p.get("width") else "?"
+        return f"  {fid}: CHAMFER       w={w}"
+    if t == "POCKET":
+        return f"  {fid}: POCKET        floor=F{p['floor_face_id']}"
+    if t == "COUNTERBORE":
+        return (f"  {fid}: COUNTERBORE   bore_d={fmt(p['bore_diameter'])}{units}"
+                f"  cbore_d={fmt(p['cbore_diameter'])}{units}"
+                f"  depth={fmt(p['total_depth'])}{units}")
+    if t == "COUNTERSINK":
+        return (f"  {fid}: COUNTERSINK   angle={fmt(p['cone_half_angle']*2)}°"
+                f"  bore_d={fmt(p['bore_diameter'])}{units}")
+    if t == "SLOT":
+        return (f"  {fid}: SLOT          w={fmt(p['width'])}{units}"
+                f"  l={fmt(p['length'])}{units}")
+    if t == "PATTERN":
+        return (f"  {fid}: PATTERN       {p['count']}× {p['child_type'].replace('_',' ').lower()}"
+                f"  d={fmt(p['diameter'])}{units}")
+    return f"  {fid}: {t}"
+
+
+# ---------------------------------------------------------------------------
+# NURBS detail block (appended to NURBS faces for full lossless dump)
+# ---------------------------------------------------------------------------
+
 def render_nurbs_detail(face_id: int, geom: dict) -> str:
     """Return the full control-point dump for a NURBS face."""
     lines = [f"[F{face_id}] NURBS_SURFACE — full definition:"]

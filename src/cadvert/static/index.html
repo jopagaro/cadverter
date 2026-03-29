@@ -499,6 +499,24 @@
     }
     .chip:hover { border-color: var(--accent); color: var(--accent); }
 
+    .tool-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+      border-radius: 6px;
+      padding: 3px 9px;
+      margin-top: 4px;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.45; }
+    }
+
     .error-toast {
       position: fixed;
       bottom: 80px;
@@ -992,14 +1010,20 @@ async function sendMessage() {
     removeTyping(typingId);
     const assistantMsg = appendMessage('assistant', '');
     let fullText = '';
+    // Tool-call indicator element (injected into the bubble while tools run)
+    let toolIndicator = null;
+    const activeTools = new Set();
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = '';
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      const lines = decoder.decode(value).split('\n');
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete line in buffer
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
         const payload = line.slice(6);
@@ -1007,7 +1031,27 @@ async function sendMessage() {
         try {
           const obj = JSON.parse(payload);
           if (obj.error) throw new Error(obj.error);
+
+          // Tool call notification — show "Analyzing geometry…" indicator
+          if (obj.tool_call) {
+            activeTools.add(obj.tool_call);
+            const label = _toolLabel(obj.tool_call);
+            if (!toolIndicator) {
+              toolIndicator = document.createElement('div');
+              toolIndicator.className = 'tool-indicator';
+              assistantMsg.querySelector('.msg-bubble').appendChild(toolIndicator);
+            }
+            toolIndicator.textContent = `⚙ ${label}…`;
+            scrollToBottom();
+          }
+
           if (obj.content) {
+            // First content token — remove tool indicator
+            if (toolIndicator) {
+              toolIndicator.remove();
+              toolIndicator = null;
+              activeTools.clear();
+            }
             fullText += obj.content;
             assistantMsg.querySelector('.msg-bubble').innerHTML = renderMarkdown(fullText);
             scrollToBottom();
@@ -1017,6 +1061,8 @@ async function sendMessage() {
         }
       }
     }
+    // Clean up any dangling indicator
+    if (toolIndicator) { toolIndicator.remove(); toolIndicator = null; }
 
     chatHistory.push({ role: 'assistant', content: fullText });
 
@@ -1029,6 +1075,18 @@ async function sendMessage() {
     document.getElementById('chatInput').disabled = false;
     document.getElementById('chatInput').focus();
   }
+}
+
+function _toolLabel(name) {
+  const labels = {
+    get_feature:      'Fetching feature geometry',
+    get_face:         'Reading face geometry',
+    get_edge:         'Reading edge geometry',
+    measure_distance: 'Computing exact distance',
+    get_neighbors:    'Exploring adjacent faces',
+    search_faces:     'Searching geometry',
+  };
+  return labels[name] || `Calling ${name}`;
 }
 
 function sendChip(el) {
