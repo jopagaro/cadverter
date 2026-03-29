@@ -286,27 +286,29 @@ def _render_view(
 ) -> None:
     import vtk
 
-    # Mapper
+    # Mapper — explicitly select the Colors array so normals don't override it
     mapper = vtk.vtkPolyDataMapper()
     mapper.SetInputData(poly_data)
     mapper.ScalarVisibilityOn()
     mapper.SetColorModeToDirectScalars()
+    mapper.SelectColorArray("Colors")
+    mapper.SetScalarModeToUseCellFieldData()
 
     actor = vtk.vtkActor()
     actor.SetMapper(mapper)
     prop = actor.GetProperty()
-    prop.SetAmbient(0.2)
-    prop.SetDiffuse(0.75)
-    prop.SetSpecular(0.15)
-    prop.SetSpecularPower(20)
+    prop.SetAmbient(0.3)
+    prop.SetDiffuse(0.7)
+    prop.SetSpecular(0.2)
+    prop.SetSpecularPower(30)
 
-    # Renderer
+    # Renderer with dark background for contrast
     renderer = vtk.vtkRenderer()
-    renderer.SetBackground(0.95, 0.95, 0.95)
+    renderer.SetBackground(0.12, 0.13, 0.17)
     renderer.AddActor(actor)
 
-    # Camera
-    cam_dist = diag * 1.5
+    # Camera — set direction then let VTK auto-fit via ResetCamera
+    cam_dist = diag * 3.0
     cx, cy, cz = center
     dx, dy, dz = cam_direction
     mag = math.sqrt(dx * dx + dy * dy + dz * dz)
@@ -317,7 +319,7 @@ def _render_view(
     cam.SetPosition(cx + dx * cam_dist, cy + dy * cam_dist, cz + dz * cam_dist)
     cam.SetViewUp(*cam_up)
     cam.ParallelProjectionOn()
-    cam.SetParallelScale(diag * 0.55)
+    renderer.ResetCamera()  # auto-fit geometry within the view
 
     # Lighting
     light1 = vtk.vtkLight()
