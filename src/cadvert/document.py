@@ -703,27 +703,78 @@ def render_tier0(
 
     # ── Features ──────────────────────────────────────────────────────────────
     if features:
+        from collections import defaultdict
         fids = feature_ids if feature_ids is not None else assign_feature_ids(features)
-        regular = [(fid, f) for fid, f in zip(fids, features) if f.feature_type != "PATTERN"]
-        patterns = [(fid, f) for fid, f in zip(fids, features) if f.feature_type == "PATTERN"]
         lines.append(
             f"[FEATURES — {len(features)} total"
             + (" | use get_feature(id) for full geometry" if not is_mesh else "")
             + "]"
         )
-        for fid, feat in regular + patterns:
-            lines.append(_tier0_feature_line(fid, feat, units))
+
+        # Group features by type
+        by_type: dict[str, list] = defaultdict(list)
+        for fid, feat in zip(fids, features):
+            by_type[feat.feature_type].append((fid, feat))
+
+        # Threshold: types with more instances than this get a summary line, not individual lines
+        INLINE_MAX = 12
+
+        for ftype, group in sorted(by_type.items(), key=lambda x: -len(x[1])):
+            if ftype == "FILLET":
+                # Always summarise fillets — not actionable individually
+                radii = [f.parameters.get("radius", 0) for _, f in group]
+                rmin, rmax = min(radii), max(radii)
+                r_str = f"r={fmt(rmin)}" if rmin == rmax else f"r={fmt(rmin)}–{fmt(rmax)}"
+                lines.append(
+                    f"  {len(group)}× FILLET  {r_str}{units}"
+                    "  [search_faces(surface_type='torus') to list]"
+                )
+                continue
+
+            if len(group) > INLINE_MAX:
+                # Show a compact summary line for this type
+                dims = _tier0_feature_summary(ftype, group, units)
+                lines.append(f"  {len(group)}× {ftype.replace('_',' ')}  {dims}"
+                              f"  [ids: {group[0][0]} … {group[-1][0]}]")
+            else:
+                for fid, feat in group:
+                    lines.append(_tier0_feature_line(fid, feat, units))
         lines.append("")
 
     # ── Spatial relationships ─────────────────────────────────────────────────
     if spatial:
         lines.append("[SPATIAL RELATIONSHIPS]")
-        for rel in spatial:
+        draft  = [r for r in spatial if "draft" in r.description.lower() or "Draft" in r.description]
+        under  = [r for r in spatial if "undercut" in r.description.lower() or "Undercut" in r.description]
+        others = [r for r in spatial if r not in draft and r not in under]
+
+        # Show high-value relationships first (wall thickness, spacing, dimensions, symmetry)
+        # Hard cap at 40 lines to prevent explosion on complex assemblies
+        shown = 0
+        for rel in others:
+            if shown >= 40:
+                lines.append(f"  ... and {len(others) - shown} more relationships [use tools]")
+                break
             note = f" [{rel.notes}]" if rel.notes else ""
-            lines.append(
-                f"  {rel.description}: {rel.from_ref} → {rel.to_ref}"
-                f" = {fmt(rel.value)} {units}{note}"
-            )
+            lines.append(f"  {rel.description}: {rel.from_ref} → {rel.to_ref} = {fmt(rel.value)} {units}{note}")
+            shown += 1
+
+        for rel in under:
+            note = f" [{rel.notes}]" if rel.notes else ""
+            lines.append(f"  {rel.description}: {rel.from_ref} → {rel.to_ref} = {fmt(rel.value)} {units}{note}")
+
+        if draft:
+            if len(draft) <= 6:
+                for rel in draft:
+                    note = f" [{rel.notes}]" if rel.notes else ""
+                    lines.append(f"  {rel.description}: {rel.from_ref} → {rel.to_ref} = {fmt(rel.value)} {units}{note}")
+            else:
+                angles = [r.value for r in draft]
+                zero = sum(1 for a in angles if abs(a) < 0.01)
+                lines.append(
+                    f"  Draft angles: {len(draft)} faces — {zero} at 0° (vertical walls), "
+                    f"range {fmt(min(angles))}°–{fmt(max(angles))}°  [use get_face for specific values]"
+                )
         lines.append("")
 
     # ── GD&T ─────────────────────────────────────────────────────────────────
@@ -751,6 +802,32 @@ def render_tier0(
         lines.append("  search_faces(...)          — find faces by type/radius/area")
 
     return "\n".join(lines)
+
+
+def _tier0_feature_summary(ftype: str, group: list, units: str) -> str:
+    """One-line summary for a group of identical feature type when count > INLINE_MAX."""
+    params = [f.parameters for _, f in group]
+    try:
+        if ftype in ("THROUGH_HOLE", "BLIND_HOLE"):
+            diams = sorted({p["diameter"] for p in params})
+            d_str = fmt(diams[0]) if len(diams) == 1 else f"{fmt(min(diams))}–{fmt(max(diams))}"
+            return f"d={d_str}{units}"
+        if ftype == "BOSS":
+            diams = sorted({p["diameter"] for p in params})
+            d_str = fmt(diams[0]) if len(diams) == 1 else f"{fmt(min(diams))}–{fmt(max(diams))}"
+            return f"d={d_str}{units}"
+        if ftype == "COUNTERSINK":
+            diams = sorted({p.get("bore_diameter", 0) for p in params})
+            d_str = fmt(diams[0]) if len(diams) == 1 else f"{fmt(min(diams))}–{fmt(max(diams))}"
+            angles = sorted({p.get("cone_half_angle", 0) * 2 for p in params})
+            a_str = fmt(angles[0]) if len(angles) == 1 else f"{fmt(min(angles))}–{fmt(max(angles))}"
+            return f"bore_d={d_str}{units}  angle={a_str}°"
+        if ftype == "CHAMFER":
+            widths = [p.get("width", 0) or 0 for p in params]
+            return f"w={fmt(min(widths))}–{fmt(max(widths))}{units}"
+    except Exception:
+        pass
+    return ""
 
 
 def _tier0_feature_line(fid: str, feat, units: str) -> str:
