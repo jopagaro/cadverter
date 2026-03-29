@@ -93,6 +93,36 @@ def render_shape(
 
 
 # ---------------------------------------------------------------------------
+# Location helper
+# ---------------------------------------------------------------------------
+
+def _compose_loc_trsf(loc) -> "gp_Trsf":
+    """Walk a (possibly compound) TopLoc_Location and return a single gp_Trsf.
+
+    OCP does not expose loc.IsTopLevel() in all versions, so we walk the
+    datum chain manually: result = datum_n^power_n * ... * datum_1^power_1
+    """
+    from OCP.gp import gp_Trsf
+    result = gp_Trsf()  # identity
+    if loc.IsIdentity():
+        return result
+    try:
+        current = loc
+        while not current.IsIdentity():
+            t = current.FirstDatum().Transformation()
+            power = current.FirstPower()
+            if power < 0:
+                t.Invert()
+                power = -power
+            for _ in range(power):
+                result.Multiply(t)
+            current = current.NextLocation()
+    except Exception:
+        pass  # fallback: return identity (nodes stay in local space)
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Tessellation
 # ---------------------------------------------------------------------------
 
@@ -130,26 +160,22 @@ def _tessellate(
         n = tri.NbNodes()
         m = tri.NbTriangles()
 
-        # Extract node positions (already in global coords via location)
+        # Extract node positions in local (triangulation) space
         pts = np.empty((n, 3), dtype=np.float64)
-        trsf = loc.IsIdentity()
         for i in range(1, n + 1):
-            if trsf:
-                node = tri.Node(i)
-            else:
-                node = tri.Node(i).Transformed(loc.IsTopLevel())
             node = tri.Node(i)
             pts[i - 1] = (node.X(), node.Y(), node.Z())
 
-        # Apply location transform if present
+        # Apply location transform to get global coordinates.
+        # loc.IsTopLevel() is not bound in this version of OCP —
+        # walk the datum chain manually to compose the gp_Trsf.
         if not loc.IsIdentity():
-            trsf_obj = loc.IsTopLevel()
-            # Use OCC transformation
-            from OCP.gp import gp_Pnt
+            from OCP.gp import gp_Pnt, gp_Trsf
+            trsf = _compose_loc_trsf(loc)
             for i in range(n):
                 p = gp_Pnt(pts[i, 0], pts[i, 1], pts[i, 2])
-                p_t = p.Transformed(loc.IsTopLevel())
-                pts[i] = (p_t.X(), p_t.Y(), p_t.Z())
+                p.Transform(trsf)
+                pts[i] = (p.X(), p.Y(), p.Z())
 
         # Extract triangle connectivity
         face_tris = np.empty((m, 3), dtype=np.int64)
