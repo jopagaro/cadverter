@@ -302,7 +302,7 @@ async def chat(
                 messages=openai_messages,
                 tools=tools or None,
                 tool_choice="auto" if tools else None,
-                max_tokens=2048,
+                max_completion_tokens=2048,
                 stream=True,
             )
 
@@ -388,7 +388,7 @@ async def chat(
                     messages=openai_messages,
                     tools=tools,
                     tool_choice="auto",
-                    max_tokens=2048,
+                    max_completion_tokens=2048,
                     stream=True,
                 )
 
