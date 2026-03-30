@@ -47,10 +47,12 @@
     }
 
     .logo {
-      font-size: 16px;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-      color: var(--text);
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
 
     .key-row {
@@ -335,7 +337,7 @@
       font-weight: 700;
       flex-shrink: 0;
     }
-    .msg.assistant .msg-avatar { background: var(--surface); border: 1px solid var(--border); color: var(--accent); }
+    .msg.assistant .msg-avatar { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; }
     .msg.user .msg-avatar { background: var(--border); color: var(--muted); }
 
     .msg-bubble {
@@ -603,8 +605,8 @@
 
 <!-- Header -->
 <header>
-  <div class="logo">CADVERT</div>
-  <span style="color:var(--muted);font-size:12px;">CAD geometry analysis</span>
+  <div class="logo">⬡ CADVERT</div>
+  <span style="color:var(--muted);font-size:12px;">CAD → LLM-readable document</span>
   <div class="key-row">
     <label for="apiKeyInput">OpenAI API Key</label>
     <input type="password" id="apiKeyInput" placeholder="sk-..." autocomplete="off">
@@ -678,7 +680,7 @@
     <div class="chat-wrap">
       <div class="messages" id="messages">
         <div class="empty-state" id="emptyState">
-          <div class="empty-icon" style="font-size:32px;opacity:0.18;font-family:var(--mono);">.STEP</div>
+          <div class="empty-icon">🔩</div>
           <div class="empty-title">Upload a CAD file to start</div>
           <div class="empty-sub">Then ask anything about the part — dimensions, features, manufacturability, tolerances.</div>
           <div class="suggestion-chips" id="chips" style="display:none">
