@@ -940,6 +940,121 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+    /* ── Wall modals (BYOK + file limit) ── */
+    .wall-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 500;
+      align-items: center;
+      justify-content: center;
+    }
+    .wall-modal.open { display: flex; }
+
+    .wall-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 32px 36px;
+      width: min(90vw, 420px);
+      text-align: center;
+    }
+
+    .wall-icon {
+      font-size: 28px;
+      margin-bottom: 14px;
+      opacity: 0.7;
+    }
+
+    .wall-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .wall-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+
+    .wall-input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .wall-input-row input {
+      flex: 1;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 8px 12px;
+      font-size: 12px;
+      font-family: var(--mono);
+      outline: none;
+      transition: border-color 150ms;
+    }
+
+    .wall-input-row input:focus { border-color: var(--text-muted); }
+
+    .wall-divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 16px 0;
+      color: var(--text-dim);
+      font-size: 11px;
+    }
+    .wall-divider::before,
+    .wall-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .wall-cta {
+      width: 100%;
+      padding: 10px;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: opacity 150ms;
+      text-decoration: none;
+      display: block;
+      margin-bottom: 10px;
+    }
+    .wall-cta:hover { opacity: 0.88; }
+
+    .wall-tomorrow {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
+    /* Free message counter badge in header */
+    .free-counter {
+      font-size: 10px;
+      color: var(--text-muted);
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px 8px;
+      white-space: nowrap;
+    }
+    .free-counter.warn { color: var(--warning); border-color: var(--warning-bg); }
+    .free-counter.gone { color: var(--danger); border-color: rgba(220,53,69,0.2); }
   </style>
 </head>
 <body>
@@ -957,18 +1072,22 @@
   </div>
 
   <div class="key-row">
-    <label for="apiKeyInput">OpenAI API Key</label>
-    <input type="password" id="apiKeyInput" placeholder="sk-..." autocomplete="off">
-    <select id="modelSelect">
-      <option value="gpt-5.4">GPT-5.4 (latest)</option>
-      <option value="gpt-5.4-mini">GPT-5.4 mini</option>
+    <span class="free-counter" id="freeCounter" style="display:none">3 free messages left</span>
+    <!-- API key row — hidden until BYOK wall is hit -->
+    <div id="apiKeyRow" style="display:none;align-items:center;gap:6px;display:none">
+      <label for="apiKeyInput" style="color:var(--text-muted);font-size:11px;white-space:nowrap">Your OpenAI Key</label>
+      <input type="password" id="apiKeyInput" placeholder="sk-..." autocomplete="off"
+        style="width:160px;background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:5px 9px;font-size:11px;font-family:var(--mono);outline:none;">
+      <button class="btn btn-ghost" onclick="saveKey()">Save</button>
+    </div>
+    <select id="modelSelect" style="display:none">
+      <option value="gpt-4o-mini">GPT-4o mini</option>
+      <option value="gpt-4o">GPT-4o</option>
       <option value="gpt-4.1">GPT-4.1</option>
       <option value="gpt-4.1-mini">GPT-4.1 mini</option>
-      <option value="gpt-4o">GPT-4o</option>
-      <option value="o3">o3</option>
+      <option value="gpt-5.4">GPT-5.4</option>
       <option value="o4-mini">o4-mini</option>
     </select>
-    <button class="btn btn-ghost" onclick="saveKey()">Save</button>
   </div>
 </header>
 
@@ -1064,6 +1183,35 @@
 <!-- Error toast -->
 <div class="error-toast" id="errorToast"></div>
 
+<!-- BYOK wall modal -->
+<div class="wall-modal" id="byokModal">
+  <div class="wall-box">
+    <div class="wall-icon">🔑</div>
+    <div class="wall-title">You've used your 3 free messages</div>
+    <div class="wall-sub">Enter your OpenAI API key to keep going — your key goes directly to OpenAI, we never store it.</div>
+    <div class="wall-input-row">
+      <input type="password" id="byokKeyInput" placeholder="sk-..." autocomplete="off">
+      <button class="btn btn-primary" onclick="submitByokKey()" style="padding:8px 14px;font-size:12px;">Continue</button>
+    </div>
+    <div class="wall-divider">or</div>
+    <a class="wall-cta" href="#" target="_blank">Get the Desktop App — $20</a>
+    <div class="wall-tomorrow">No API key? Come back tomorrow for 3 more free messages.</div>
+  </div>
+</div>
+
+<!-- File limit modal -->
+<div class="wall-modal" id="fileLimitModal">
+  <div class="wall-box">
+    <div class="wall-icon">📁</div>
+    <div class="wall-title">Daily file limit reached</div>
+    <div class="wall-sub">You've used your free file for today. Limits reset at midnight.<br>The desktop app gives you unlimited files and full analysis, offline.</div>
+    <a class="wall-cta" href="#" target="_blank">Get the Desktop App — $20</a>
+    <div class="wall-tomorrow" style="margin-top:12px;">
+      <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="closeFileLimitModal()">Dismiss — come back tomorrow</span>
+    </div>
+  </div>
+</div>
+
 <!-- Processing overlay -->
 <div class="processing-overlay" id="processingOverlay">
   <div class="processing-box">
@@ -1084,10 +1232,12 @@ let sessionId = null;
 let hsdText = '';
 let chatHistory = [];
 let streaming = false;
+let messagesSent = 0;          // tracked client-side for counter display
+const FREE_MSGS = 3;           // must match server FREE_MESSAGES_PER_SESSION
+let byokKey = null;            // set after user enters key in BYOK modal
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 (function init() {
-  // Theme: check localStorage first, then system preference
   const savedTheme = localStorage.getItem('cadvert_theme');
   if (savedTheme) {
     applyTheme(savedTheme);
@@ -1095,20 +1245,18 @@ let streaming = false;
     applyTheme(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   }
 
-  // Follow system preference changes if user hasn't overridden
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
-    if (!localStorage.getItem('cadvert_theme')) {
-      applyTheme(e.matches ? 'dark' : 'light');
-    }
+    if (!localStorage.getItem('cadvert_theme')) applyTheme(e.matches ? 'dark' : 'light');
   });
 
+  // Pre-fill BYOK key if saved from a previous session
   const savedKey = localStorage.getItem('cadvert_api_key');
-  if (savedKey) document.getElementById('apiKeyInput').value = savedKey;
+  if (savedKey) {
+    byokKey = savedKey;
+    document.getElementById('apiKeyInput').value = savedKey;
+    document.getElementById('byokKeyInput').value = savedKey;
+  }
 
-  const savedModel = localStorage.getItem('cadvert_model');
-  if (savedModel) document.getElementById('modelSelect').value = savedModel;
-
-  // Drag and drop
   const dz = document.getElementById('dropzone');
   dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
   dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
@@ -1120,6 +1268,11 @@ let streaming = false;
   });
   document.getElementById('fileInput').addEventListener('change', e => {
     if (e.target.files[0]) uploadFile(e.target.files[0]);
+  });
+
+  // Allow Enter in BYOK modal input
+  document.getElementById('byokKeyInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') submitByokKey();
   });
 })();
 
@@ -1139,15 +1292,71 @@ function applyTheme(theme) {
 function saveKey() {
   const key = document.getElementById('apiKeyInput').value.trim();
   if (key) {
+    byokKey = key;
     localStorage.setItem('cadvert_api_key', key);
-    localStorage.setItem('cadvert_model', document.getElementById('modelSelect').value);
-    showToast('API key saved to browser storage', 'success');
+    showToast('API key saved', 'success');
   }
 }
 
 function getKey() {
-  return document.getElementById('apiKeyInput').value.trim();
+  // Returns BYOK key if set, else null (server will use its own key)
+  return byokKey || null;
 }
+
+// ── Free message counter ─────────────────────────────────────────────────────
+function updateFreeCounter() {
+  const counter = document.getElementById('freeCounter');
+  const remaining = Math.max(0, FREE_MSGS - messagesSent);
+  if (!sessionId) { counter.style.display = 'none'; return; }
+  counter.style.display = '';
+  if (byokKey) {
+    counter.textContent = 'Using your API key';
+    counter.className = 'free-counter';
+  } else if (remaining === 0) {
+    counter.textContent = '0 free messages left';
+    counter.className = 'free-counter gone';
+  } else if (remaining === 1) {
+    counter.textContent = '1 free message left';
+    counter.className = 'free-counter warn';
+  } else {
+    counter.textContent = `${remaining} free messages left`;
+    counter.className = 'free-counter';
+  }
+}
+
+// ── BYOK modal ───────────────────────────────────────────────────────────────
+function openByokModal() {
+  document.getElementById('byokModal').classList.add('open');
+  setTimeout(() => document.getElementById('byokKeyInput').focus(), 50);
+}
+
+function submitByokKey() {
+  const key = document.getElementById('byokKeyInput').value.trim();
+  if (!key.startsWith('sk-')) { showToast('Enter a valid OpenAI key (starts with sk-)'); return; }
+  byokKey = key;
+  localStorage.setItem('cadvert_api_key', key);
+  document.getElementById('apiKeyInput').value = key;
+  // Show the API key row in header so they can change it later
+  const row = document.getElementById('apiKeyRow');
+  row.style.display = 'flex';
+  document.getElementById('modelSelect').style.display = '';
+  document.getElementById('byokModal').classList.remove('open');
+  updateFreeCounter();
+  showToast('Key saved — continuing with your API key', 'success');
+  // Re-attempt the last message if one was pending
+  if (_pendingMessage) { const m = _pendingMessage; _pendingMessage = null; _sendText(m); }
+}
+
+// ── File limit modal ──────────────────────────────────────────────────────────
+function openFileLimitModal() {
+  document.getElementById('fileLimitModal').classList.add('open');
+}
+
+function closeFileLimitModal() {
+  document.getElementById('fileLimitModal').classList.remove('open');
+}
+
+let _pendingMessage = null;
 
 // ── File upload ──────────────────────────────────────────────────────────────
 async function uploadFile(file) {
@@ -1196,8 +1405,13 @@ async function uploadFile(file) {
     clearInterval(ticker);
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || 'Conversion failed');
+      const body = await res.json().catch(() => ({ detail: res.statusText }));
+      if (res.status === 429) {
+        const e = new Error(body.detail?.message || 'Limit reached');
+        e._type = 'file_limit';
+        throw e;
+      }
+      throw new Error(typeof body.detail === 'string' ? body.detail : 'Conversion failed');
     }
 
     showProcessing('Finalising document…', 98, elapsed);
@@ -1219,6 +1433,8 @@ async function uploadFile(file) {
     clearInterval(ticker);
     hideProcessing();
     setProgress(false);
+    // Check for file limit 429
+    if (err._type === 'file_limit') { openFileLimitModal(); return; }
     showToast(err.message);
   }
 }
@@ -1307,6 +1523,8 @@ function renderInfoCard(data) {
 
 // ── Chat enable ───────────────────────────────────────────────────────────────
 function enableChat() {
+  messagesSent = 0;
+  updateFreeCounter();
   document.getElementById('chatInput').disabled = false;
   document.getElementById('sendBtn').disabled = false;
   document.getElementById('chatInput').focus();
@@ -1352,16 +1570,18 @@ function addSystemMsg(data) {
 }
 
 // ── Send message ──────────────────────────────────────────────────────────────
-async function sendMessage() {
-  if (streaming) return;
+function sendMessage() {
   const input = document.getElementById('chatInput');
   const text = input.value.trim();
-  if (!text) return;
-  if (!sessionId) { showToast('Upload a CAD file first'); return; }
+  if (!text || !sessionId) { if (!sessionId) showToast('Upload a CAD file first'); return; }
+  _pendingMessage = null;
+  _sendText(text);
+}
 
-  const key = getKey();
-  if (!key) { showToast('Enter your OpenAI API key in the header'); return; }
+async function _sendText(text) {
+  if (streaming) return;
 
+  const input = document.getElementById('chatInput');
   input.value = '';
   autoResize(input);
 
@@ -1373,27 +1593,40 @@ async function sendMessage() {
   document.getElementById('sendBtn').disabled = true;
   document.getElementById('chatInput').disabled = true;
 
+  const headers = { 'Content-Type': 'application/json' };
+  const key = getKey();
+  if (key) headers['X-OpenAI-Key'] = key;
+  // Always send a model header; server ignores it on free messages but needs it for BYOK
+  headers['X-Model'] = document.getElementById('modelSelect').value || 'gpt-4o-mini';
+
   try {
     const res = await fetch(`/chat/${sessionId}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-OpenAI-Key': key,
-        'X-Model': document.getElementById('modelSelect').value,
-      },
+      headers,
       body: JSON.stringify({ messages: chatHistory }),
     });
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || 'Chat request failed');
+      const body = await res.json().catch(() => ({ detail: res.statusText }));
+      const detail = body.detail || {};
+      if (res.status === 429 && detail.error === 'byok_required') {
+        // Pop the user message back out — they'll resend after entering key
+        chatHistory.pop();
+        removeTyping(typingId);
+        _pendingMessage = text;
+        openByokModal();
+        return;
+      }
+      throw new Error(typeof detail === 'string' ? detail : (detail.message || 'Chat request failed'));
     }
+
+    messagesSent++;
+    updateFreeCounter();
 
     removeTyping(typingId);
     const assistantMsg = appendMessage('assistant', '');
     let fullText = '';
     let toolIndicator = null;
-    const activeTools = new Set();
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -1414,7 +1647,6 @@ async function sendMessage() {
           if (obj.error) throw new Error(obj.error);
 
           if (obj.tool_call) {
-            activeTools.add(obj.tool_call);
             const label = _toolLabel(obj.tool_call);
             if (!toolIndicator) {
               toolIndicator = document.createElement('div');
@@ -1426,11 +1658,7 @@ async function sendMessage() {
           }
 
           if (obj.content) {
-            if (toolIndicator) {
-              toolIndicator.remove();
-              toolIndicator = null;
-              activeTools.clear();
-            }
+            if (toolIndicator) { toolIndicator.remove(); toolIndicator = null; }
             fullText += obj.content;
             assistantMsg.querySelector('.msg-bubble').innerHTML = renderMarkdown(fullText);
             scrollToBottom();
@@ -1446,6 +1674,7 @@ async function sendMessage() {
 
   } catch (err) {
     removeTyping(typingId);
+    chatHistory.pop(); // remove the user message that failed
     appendMessage('assistant', `Error: ${err.message}`);
   } finally {
     streaming = false;
@@ -1470,10 +1699,9 @@ function _toolLabel(name) {
 
 function sendChip(el) {
   const text = el.textContent;
-  document.getElementById('chatInput').value = text;
   const chips = document.getElementById('chips');
   if (chips) chips.style.display = 'none';
-  sendMessage();
+  _sendText(text);
 }
 
 function handleKey(e) {

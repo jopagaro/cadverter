@@ -10,11 +10,15 @@ Endpoints:
 from __future__ import annotations
 import asyncio
 import json
+import os
 import shutil
 import tempfile
 import uuid
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,6 +30,21 @@ from fastapi.staticfiles import StaticFiles
 STATIC_DIR = Path(__file__).parent / "static"
 UPLOAD_DIR = Path(tempfile.gettempdir()) / "cadvert_sessions"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# ── Tier limits ───────────────────────────────────────────────────────────────
+
+# Server pays for this many messages per session, then requires BYOK
+FREE_MESSAGES_PER_SESSION = int(os.environ.get("FREE_MESSAGES_PER_SESSION", "3"))
+# Max files processed per IP per day (resets at midnight)
+FREE_FILES_PER_DAY = int(os.environ.get("FREE_FILES_PER_DAY", "1"))
+# BYOK users still cap at this many messages per session (0 = unlimited)
+BYOK_MESSAGES_PER_SESSION = int(os.environ.get("BYOK_MESSAGES_PER_SESSION", "20"))
+# Server's own OpenAI key (pays for the free messages)
+SERVER_OPENAI_KEY: Optional[str] = os.environ.get("OPENAI_API_KEY")
+
+# ── Rate tracking (in-memory, resets on restart) ──────────────────────────────
+# { ip: {"date": date, "files": int} }
+_ip_file_counts: dict[str, dict] = defaultdict(lambda: {"date": None, "files": 0})
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
@@ -43,7 +62,8 @@ _executor = ThreadPoolExecutor(max_workers=2)
 
 # In-memory session store: session_id → result dict
 # Keys: hsd, tier0, graph, features, feature_ids, spatial, shape,
-#       face_shape_map, image_paths, format, is_mesh, units, summary
+#       face_shape_map, image_paths, format, is_mesh, units, summary,
+#       message_count (int)
 _sessions: dict[str, dict] = {}
 
 
@@ -195,9 +215,39 @@ async def index():
     return HTMLResponse(html_path.read_text(encoding="utf-8"))
 
 
+def _get_client_ip(request: Request) -> str:
+    """Extract real client IP, respecting X-Forwarded-For from a reverse proxy."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _check_file_limit(ip: str) -> None:
+    """Raise 429 if this IP has already used their daily file quota."""
+    today = date.today()
+    rec = _ip_file_counts[ip]
+    if rec["date"] != today:
+        rec["date"] = today
+        rec["files"] = 0
+    if rec["files"] >= FREE_FILES_PER_DAY:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "file_limit",
+                "message": f"You've used your {FREE_FILES_PER_DAY} free file(s) today.",
+                "reset": "Resets at midnight. Get the desktop app for unlimited.",
+            },
+        )
+    rec["files"] += 1
+
+
 @app.post("/convert")
-async def convert(file: UploadFile = File(...)):
+async def convert(request: Request, file: UploadFile = File(...)):
     """Upload a CAD file and run the full CADVERT pipeline."""
+    ip = _get_client_ip(request)
+    _check_file_limit(ip)
+
     session_id = str(uuid.uuid4())
     session_dir = UPLOAD_DIR / session_id
     session_dir.mkdir(parents=True)
@@ -219,6 +269,7 @@ async def convert(file: UploadFile = File(...)):
         shutil.rmtree(session_dir, ignore_errors=True)
         raise HTTPException(status_code=422, detail=str(exc))
 
+    result["message_count"] = 0
     _sessions[session_id] = result
 
     images = []
@@ -244,27 +295,67 @@ async def convert(file: UploadFile = File(...)):
 async def chat(
     session_id: str,
     request: Request,
-    x_openai_key: str = Header(..., alias="X-OpenAI-Key"),
+    x_openai_key: Optional[str] = Header(default=None, alias="X-OpenAI-Key"),
     x_model: str = Header(default="gpt-4o", alias="X-Model"),
 ):
     """Stream a GPT chat response using Tier 0 context + tool calling.
 
     Body JSON: { "messages": [{role, content}, ...] }
-    The API key is used for this request only and never stored.
+
+    Tiering:
+      - First FREE_MESSAGES_PER_SESSION messages: server key, no X-OpenAI-Key needed
+      - After that: X-OpenAI-Key required (BYOK), up to BYOK_MESSAGES_PER_SESSION
     """
     session = _sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found or expired")
 
+    msg_count = session.get("message_count", 0)
+
+    # Decide which key to use
+    if msg_count < FREE_MESSAGES_PER_SESSION:
+        # Server pays
+        if not SERVER_OPENAI_KEY:
+            raise HTTPException(
+                status_code=503,
+                detail="Server API key not configured. Please provide your own OpenAI key.",
+            )
+        api_key = SERVER_OPENAI_KEY
+    else:
+        # BYOK required
+        if not x_openai_key:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": "byok_required",
+                    "message": "You've used your 3 free messages. Enter your OpenAI API key to continue.",
+                    "messages_used": msg_count,
+                },
+            )
+        api_key = x_openai_key
+        # Cap BYOK sessions too
+        if BYOK_MESSAGES_PER_SESSION > 0 and msg_count >= FREE_MESSAGES_PER_SESSION + BYOK_MESSAGES_PER_SESSION:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": "session_limit",
+                    "message": "Session message limit reached. Start a new session by uploading a file.",
+                    "messages_used": msg_count,
+                },
+            )
+
     body = await request.json()
     user_messages: list[dict] = body.get("messages", [])
+
+    # Increment before the call so concurrent requests don't double-dip free quota
+    session["message_count"] = msg_count + 1
 
     try:
         from openai import AsyncOpenAI
     except ImportError:
         raise HTTPException(status_code=500, detail="openai package not installed")
 
-    client = AsyncOpenAI(api_key=x_openai_key)
+    client = AsyncOpenAI(api_key=api_key)
     tier0  = session.get("tier0") or session.get("hsd", "")
 
     system_msg = (
