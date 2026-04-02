@@ -6,6 +6,7 @@
   <title>CADVERT</title>
   <link rel="preconnect" href="https://fonts.cdnfonts.com">
   <link href="https://fonts.cdnfonts.com/css/satoshi" rel="stylesheet">
+  <script src="https://accounts.google.com/gsi/client" async defer onload="if(typeof _renderGisButton==='function')_renderGisButton()"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1055,6 +1056,126 @@
     }
     .free-counter.warn { color: var(--warning); border-color: var(--warning-bg); }
     .free-counter.gone { color: var(--danger); border-color: rgba(220,53,69,0.2); }
+
+    /* ── Sign-in overlay ── */
+    .signin-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 300ms;
+    }
+    .signin-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .signin-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 48px 48px 40px;
+      text-align: center;
+      width: min(90vw, 380px);
+    }
+
+    .signin-logo-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 28px;
+    }
+
+    .signin-logo-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: 9px;
+      background: var(--logo-bg);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .signin-logo-text {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.4px;
+      color: var(--text);
+    }
+
+    .signin-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .signin-sub {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 28px;
+    }
+
+    .signin-btn-wrap {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 18px;
+      min-height: 44px;
+    }
+
+    .signin-footer {
+      font-size: 11px;
+      color: var(--text-dim);
+      line-height: 1.5;
+    }
+
+    /* ── User pill in header ── */
+    .user-pill {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-left: auto;
+    }
+
+    .user-avatar {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 1.5px solid var(--border);
+    }
+
+    .user-avatar-fallback {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .user-name {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text);
+      max-width: 120px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -1071,10 +1192,14 @@
     <button class="theme-pill" id="pill-dark" onclick="setTheme('dark')">Dark</button>
   </div>
 
-  <div class="key-row">
+  <!-- User pill (shown after login) -->
+  <div class="user-pill" id="userPill" style="display:none">
+    <img class="user-avatar" id="userAvatar" src="" alt="" onerror="this.style.display='none';document.getElementById('userAvatarFallback').style.display='flex'">
+    <div class="user-avatar-fallback" id="userAvatarFallback" style="display:none"></div>
+    <span class="user-name" id="userNameEl"></span>
     <span class="free-counter" id="freeCounter" style="display:none">3 free messages left</span>
     <!-- API key row — hidden until BYOK wall is hit -->
-    <div id="apiKeyRow" style="display:none;align-items:center;gap:6px;display:none">
+    <div id="apiKeyRow" style="display:none;align-items:center;gap:6px">
       <label for="apiKeyInput" style="color:var(--text-muted);font-size:11px;white-space:nowrap">Your OpenAI Key</label>
       <input type="password" id="apiKeyInput" placeholder="sk-..." autocomplete="off"
         style="width:160px;background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:5px 9px;font-size:11px;font-family:var(--mono);outline:none;">
@@ -1088,6 +1213,7 @@
       <option value="gpt-5.4">GPT-5.4</option>
       <option value="o4-mini">o4-mini</option>
     </select>
+    <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;white-space:nowrap" onclick="signOut()">Sign out</button>
   </div>
 </header>
 
@@ -1226,6 +1352,20 @@
   </div>
 </div>
 
+<!-- Sign-in overlay -->
+<div class="signin-overlay" id="signinOverlay">
+  <div class="signin-box">
+    <div class="signin-logo-wrap">
+      <div class="signin-logo-mark">C</div>
+      <div class="signin-logo-text">CADVERT</div>
+    </div>
+    <div class="signin-title">CAD geometry analysis</div>
+    <div class="signin-sub">Sign in to upload your CAD files and start analysing geometry with AI.</div>
+    <div class="signin-btn-wrap" id="signinBtnWrap"></div>
+    <div class="signin-footer">Free · 1 file per day · No credit card needed</div>
+  </div>
+</div>
+
 <script>
 // ── State ────────────────────────────────────────────────────────────────────
 let sessionId = null;
@@ -1235,6 +1375,104 @@ let streaming = false;
 let messagesSent = 0;          // tracked client-side for counter display
 const FREE_MSGS = 3;           // must match server FREE_MESSAGES_PER_SESSION
 let byokKey = null;            // set after user enters key in BYOK modal
+let googleToken = null;        // current Google ID token (Bearer)
+let currentUser = null;        // { google_id, email, name, picture }
+
+// ── Google Auth ──────────────────────────────────────────────────────────────
+const GOOGLE_CLIENT_ID = '257835361477-e8d4ebui9tm1pa6dssb5gguh7v1mjt0g.apps.googleusercontent.com';
+
+function onGoogleSignIn(response) {
+  // Called by GIS with a credential JWT
+  googleToken = response.credential;
+  // Verify with server and upsert user
+  fetch('/auth/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ credential: googleToken }),
+  })
+    .then(r => r.ok ? r.json() : Promise.reject(r))
+    .then(user => {
+      currentUser = user;
+      _showLoggedIn();
+    })
+    .catch(err => {
+      console.error('Auth failed', err);
+      showToast('Sign-in failed — please try again');
+      googleToken = null;
+      currentUser = null;
+    });
+}
+
+function _showLoggedIn() {
+  // Hide sign-in overlay
+  const overlay = document.getElementById('signinOverlay');
+  overlay.classList.add('hidden');
+  setTimeout(() => overlay.style.display = 'none', 310);
+
+  // Show user pill
+  const pill = document.getElementById('userPill');
+  pill.style.display = 'flex';
+
+  const avatar = document.getElementById('userAvatar');
+  const fallback = document.getElementById('userAvatarFallback');
+  if (currentUser.picture) {
+    avatar.src = currentUser.picture;
+    avatar.style.display = '';
+  } else {
+    avatar.style.display = 'none';
+    fallback.style.display = 'flex';
+    fallback.textContent = (currentUser.name || currentUser.email || 'U')[0].toUpperCase();
+  }
+  document.getElementById('userNameEl').textContent = (currentUser.name || currentUser.email || '').split(' ')[0];
+}
+
+function signOut() {
+  googleToken = null;
+  currentUser = null;
+  // Hide user pill
+  document.getElementById('userPill').style.display = 'none';
+  // Reset session
+  sessionId = null;
+  hsdText = '';
+  chatHistory = [];
+  messagesSent = 0;
+  document.getElementById('viewsStrip').innerHTML = '';
+  document.getElementById('messages').innerHTML = '';
+  document.getElementById('messages').appendChild(createEmptyState());
+  document.getElementById('infoCard').classList.remove('visible');
+  document.getElementById('chatInput').disabled = true;
+  document.getElementById('sendBtn').disabled = true;
+  // Show sign-in overlay again
+  const overlay = document.getElementById('signinOverlay');
+  overlay.style.display = 'flex';
+  overlay.classList.remove('hidden');
+  // Re-render GIS button
+  _renderGisButton();
+}
+
+function _renderGisButton() {
+  if (typeof google === 'undefined') return;
+  const wrap = document.getElementById('signinBtnWrap');
+  wrap.innerHTML = '';
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: onGoogleSignIn,
+    auto_select: false,
+    cancel_on_tap_outside: false,
+  });
+  google.accounts.id.renderButton(wrap, {
+    theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'filled_black' : 'outline',
+    size: 'large',
+    text: 'signin_with',
+    shape: 'rectangular',
+    width: 280,
+  });
+}
+
+// Called by GIS script once loaded
+window.onGisLoad = function() {
+  _renderGisButton();
+};
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 (function init() {
@@ -1274,6 +1512,9 @@ let byokKey = null;            // set after user enters key in BYOK modal
   document.getElementById('byokKeyInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') submitByokKey();
   });
+
+  // Render GIS button (GIS script may already be loaded, or fires onGisLoad)
+  if (typeof google !== 'undefined') _renderGisButton();
 })();
 
 // ── Theme ────────────────────────────────────────────────────────────────────
@@ -1401,11 +1642,21 @@ async function uploadFile(file) {
       showProcessing(stage, pct, elapsed);
     }, 1000);
 
-    const res = await fetch('/convert', { method: 'POST', body: form });
+    const headers = googleToken ? { 'Authorization': `Bearer ${googleToken}` } : {};
+    const res = await fetch('/convert', { method: 'POST', body: form, headers });
     clearInterval(ticker);
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({ detail: res.statusText }));
+      if (res.status === 401) {
+        googleToken = null; currentUser = null;
+        const overlay = document.getElementById('signinOverlay');
+        overlay.style.display = 'flex'; overlay.classList.remove('hidden');
+        _renderGisButton();
+        const e = new Error('Please sign in to upload files');
+        e._type = 'auth';
+        throw e;
+      }
       if (res.status === 429) {
         const e = new Error(body.detail?.message || 'Limit reached');
         e._type = 'file_limit';
@@ -1433,8 +1684,8 @@ async function uploadFile(file) {
     clearInterval(ticker);
     hideProcessing();
     setProgress(false);
-    // Check for file limit 429
     if (err._type === 'file_limit') { openFileLimitModal(); return; }
+    if (err._type === 'auth') return; // overlay already shown
     showToast(err.message);
   }
 }
@@ -1594,6 +1845,7 @@ async function _sendText(text) {
   document.getElementById('chatInput').disabled = true;
 
   const headers = { 'Content-Type': 'application/json' };
+  if (googleToken) headers['Authorization'] = `Bearer ${googleToken}`;
   const key = getKey();
   if (key) headers['X-OpenAI-Key'] = key;
   // Always send a model header; server ignores it on free messages but needs it for BYOK
@@ -1609,6 +1861,16 @@ async function _sendText(text) {
     if (!res.ok) {
       const body = await res.json().catch(() => ({ detail: res.statusText }));
       const detail = body.detail || {};
+      if (res.status === 401) {
+        chatHistory.pop();
+        removeTyping(typingId);
+        googleToken = null; currentUser = null;
+        const overlay = document.getElementById('signinOverlay');
+        overlay.style.display = 'flex'; overlay.classList.remove('hidden');
+        _renderGisButton();
+        showToast('Session expired — please sign in again');
+        return;
+      }
       if (res.status === 429 && detail.error === 'byok_required') {
         // Pop the user message back out — they'll resend after entering key
         chatHistory.pop();

@@ -12,9 +12,9 @@ import asyncio
 import json
 import os
 import shutil
+import sqlite3
 import tempfile
 import uuid
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
@@ -31,20 +31,45 @@ STATIC_DIR = Path(__file__).parent / "static"
 UPLOAD_DIR = Path(tempfile.gettempdir()) / "cadvert_sessions"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+# ── Auth ───────────────────────────────────────────────────────────────────────
+GOOGLE_CLIENT_ID = os.environ.get(
+    "GOOGLE_CLIENT_ID",
+    "257835361477-e8d4ebui9tm1pa6dssb5gguh7v1mjt0g.apps.googleusercontent.com",
+)
+
 # ── Tier limits ───────────────────────────────────────────────────────────────
 
 # Server pays for this many messages per session, then requires BYOK
 FREE_MESSAGES_PER_SESSION = int(os.environ.get("FREE_MESSAGES_PER_SESSION", "3"))
-# Max files processed per IP per day (resets at midnight)
+# Max files processed per user per day (resets at midnight)
 FREE_FILES_PER_DAY = int(os.environ.get("FREE_FILES_PER_DAY", "1"))
 # BYOK users still cap at this many messages per session (0 = unlimited)
 BYOK_MESSAGES_PER_SESSION = int(os.environ.get("BYOK_MESSAGES_PER_SESSION", "20"))
 # Server's own OpenAI key (pays for the free messages)
 SERVER_OPENAI_KEY: Optional[str] = os.environ.get("OPENAI_API_KEY")
 
-# ── Rate tracking (in-memory, resets on restart) ──────────────────────────────
-# { ip: {"date": date, "files": int} }
-_ip_file_counts: dict[str, dict] = defaultdict(lambda: {"date": None, "files": 0})
+# ── SQLite users DB ────────────────────────────────────────────────────────────
+DB_PATH = Path(tempfile.gettempdir()) / "cadvert_users.db"
+
+
+def _init_db() -> None:
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            google_id      TEXT PRIMARY KEY,
+            email          TEXT NOT NULL,
+            name           TEXT,
+            picture        TEXT,
+            files_today    INTEGER DEFAULT 0,
+            last_file_date TEXT,
+            created_at     TEXT DEFAULT (date('now'))
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+_init_db()
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
@@ -215,38 +240,107 @@ async def index():
     return HTMLResponse(html_path.read_text(encoding="utf-8"))
 
 
-def _get_client_ip(request: Request) -> str:
-    """Extract real client IP, respecting X-Forwarded-For from a reverse proxy."""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
-def _check_file_limit(ip: str) -> None:
-    """Raise 429 if this IP has already used their daily file quota."""
-    today = date.today()
-    rec = _ip_file_counts[ip]
-    if rec["date"] != today:
-        rec["date"] = today
-        rec["files"] = 0
-    if rec["files"] >= FREE_FILES_PER_DAY:
-        raise HTTPException(
-            status_code=429,
-            detail={
-                "error": "file_limit",
-                "message": f"You've used your {FREE_FILES_PER_DAY} free file(s) today.",
-                "reset": "Resets at midnight. Get the desktop app for unlimited.",
-            },
+def _verify_google_token(credential: str) -> dict:
+    """Verify a Google ID token (from GIS) and return the decoded payload."""
+    try:
+        from google.oauth2 import id_token as gid_token
+        from google.auth.transport import requests as grequests
+        payload = gid_token.verify_oauth2_token(
+            credential,
+            grequests.Request(),
+            GOOGLE_CLIENT_ID,
         )
-    rec["files"] += 1
+        return payload
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid Google token: {exc}")
+
+
+def _get_current_user(authorization: Optional[str]) -> dict:
+    """Extract & verify Bearer token; return user dict with google_id, email, name, picture."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Login required")
+    token = authorization[len("Bearer "):]
+    return _verify_google_token(token)
+
+
+def _upsert_user(payload: dict) -> None:
+    """Create or update user row in SQLite from a verified token payload."""
+    google_id = payload["sub"]
+    email     = payload.get("email", "")
+    name      = payload.get("name", "")
+    picture   = payload.get("picture", "")
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute(
+        """INSERT INTO users (google_id, email, name, picture)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(google_id) DO UPDATE SET
+               email   = excluded.email,
+               name    = excluded.name,
+               picture = excluded.picture""",
+        (google_id, email, name, picture),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _check_file_limit_user(google_id: str) -> None:
+    """Raise 429 if this user has already used their daily file quota, else increment."""
+    today = date.today().isoformat()
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        row = conn.execute(
+            "SELECT files_today, last_file_date FROM users WHERE google_id = ?",
+            (google_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=401, detail="User not found — please sign in again")
+        files_today, last_file_date = row
+        if last_file_date != today:
+            files_today = 0
+        if files_today >= FREE_FILES_PER_DAY:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": "file_limit",
+                    "message": f"You've used your {FREE_FILES_PER_DAY} free file(s) today.",
+                    "reset": "Resets at midnight. Get the desktop app for unlimited.",
+                },
+            )
+        conn.execute(
+            "UPDATE users SET files_today = ?, last_file_date = ? WHERE google_id = ?",
+            (files_today + 1, today, google_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@app.post("/auth/verify")
+async def auth_verify(request: Request):
+    """Verify a Google credential and upsert the user. Returns user info."""
+    body = await request.json()
+    credential = body.get("credential", "")
+    if not credential:
+        raise HTTPException(status_code=400, detail="credential required")
+    payload = _verify_google_token(credential)
+    _upsert_user(payload)
+    return JSONResponse({
+        "google_id": payload["sub"],
+        "email":     payload.get("email", ""),
+        "name":      payload.get("name", ""),
+        "picture":   payload.get("picture", ""),
+    })
 
 
 @app.post("/convert")
-async def convert(request: Request, file: UploadFile = File(...)):
+async def convert(
+    request: Request,
+    file: UploadFile = File(...),
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+):
     """Upload a CAD file and run the full CADVERT pipeline."""
-    ip = _get_client_ip(request)
-    _check_file_limit(ip)
+    user = _get_current_user(authorization)
+    _check_file_limit_user(user["sub"])
 
     session_id = str(uuid.uuid4())
     session_dir = UPLOAD_DIR / session_id
@@ -295,6 +389,7 @@ async def convert(request: Request, file: UploadFile = File(...)):
 async def chat(
     session_id: str,
     request: Request,
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
     x_openai_key: Optional[str] = Header(default=None, alias="X-OpenAI-Key"),
     x_model: str = Header(default="gpt-4o", alias="X-Model"),
 ):
@@ -306,6 +401,8 @@ async def chat(
       - First FREE_MESSAGES_PER_SESSION messages: server key, no X-OpenAI-Key needed
       - After that: X-OpenAI-Key required (BYOK), up to BYOK_MESSAGES_PER_SESSION
     """
+    _get_current_user(authorization)  # 401 if not logged in
+
     session = _sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found or expired")
