@@ -14,6 +14,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import time
 import uuid
 
 # Load .env file from project root if it exists (stdlib only, no dotenv needed)
@@ -63,6 +64,17 @@ if STRIPE_SECRET_KEY:
     except ImportError:
         pass
 
+# ── Safety check ──────────────────────────────────────────────────────────────
+_real_key = os.environ.get("OPENAI_API_KEY", "")
+if os.environ.get("DISABLE_AUTH", "0") == "1" and _real_key and not _real_key.startswith("sk-test"):
+    import warnings
+    warnings.warn(
+        "⚠️  DISABLE_AUTH=1 is set alongside a real OPENAI_API_KEY. "
+        "If this is a production server you will pay for ALL requests with no auth. "
+        "Set DISABLE_AUTH=0 or remove OPENAI_API_KEY.",
+        stacklevel=1,
+    )
+
 # ── Tier limits ───────────────────────────────────────────────────────────────
 
 # Server pays for this many messages per session (free tier), then BYOK wall
@@ -71,6 +83,19 @@ FREE_MESSAGES_PER_SESSION = int(os.environ.get("FREE_MESSAGES_PER_SESSION", "3")
 FREE_FILES_PER_DAY = int(os.environ.get("FREE_FILES_PER_DAY", "1"))
 # BYOK users cap (0 = unlimited)
 BYOK_MESSAGES_PER_SESSION = int(os.environ.get("BYOK_MESSAGES_PER_SESSION", "20"))
+# Hard daily message cap for paid tiers (stops scripted abuse — real users never hit this)
+PRO_MESSAGES_PER_DAY  = int(os.environ.get("PRO_MESSAGES_PER_DAY",  "200"))
+BYOK_MESSAGES_PER_DAY = int(os.environ.get("BYOK_MESSAGES_PER_DAY", "200"))
+# Max upload size
+MAX_FILE_MB = int(os.environ.get("MAX_FILE_MB", "50"))
+# Max messages in chat history accepted from client
+MAX_HISTORY_MESSAGES = int(os.environ.get("MAX_HISTORY_MESSAGES", "30"))
+# Max length of a single user message
+MAX_MESSAGE_CHARS = int(os.environ.get("MAX_MESSAGE_CHARS", "4000"))
+# Allowed OpenAI models (prevents user from requesting expensive/unknown models)
+ALLOWED_MODELS = {
+    "gpt-4o-mini", "gpt-4o", "gpt-4.1", "gpt-4.1-mini", "gpt-5.4", "o4-mini",
+}
 # Server's own OpenAI key (pays for free + pro messages)
 SERVER_OPENAI_KEY: Optional[str] = os.environ.get("OPENAI_API_KEY")
 
@@ -99,6 +124,8 @@ def _init_db() -> None:
         ("tier",                   "TEXT DEFAULT 'free'"),
         ("stripe_customer_id",     "TEXT"),
         ("stripe_subscription_id", "TEXT"),
+        ("messages_today",         "INTEGER DEFAULT 0"),
+        ("last_message_date",      "TEXT"),
     ]:
         try:
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
@@ -112,10 +139,12 @@ _init_db()
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
+_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",")]
+
 app = FastAPI(title="CADVERT")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -124,11 +153,31 @@ app.mount("/sessions", StaticFiles(directory=str(UPLOAD_DIR)), name="sessions")
 
 _executor = ThreadPoolExecutor(max_workers=2)
 
-# In-memory session store: session_id → result dict
-# Keys: hsd, tier0, graph, features, feature_ids, spatial, shape,
-#       face_shape_map, image_paths, format, is_mesh, units, summary,
-#       message_count (int)
+# Session store with timestamps for TTL cleanup
 _sessions: dict[str, dict] = {}
+_session_timestamps: dict[str, float] = {}
+SESSION_TTL_HOURS = int(os.environ.get("SESSION_TTL_HOURS", "24"))
+
+
+@app.on_event("startup")
+async def _start_cleanup_task():
+    asyncio.create_task(_cleanup_loop())
+
+
+async def _cleanup_loop():
+    """Delete expired sessions from memory and disk every hour."""
+    while True:
+        await asyncio.sleep(3600)
+        cutoff = time.time() - SESSION_TTL_HOURS * 3600
+        expired = [sid for sid, ts in list(_session_timestamps.items()) if ts < cutoff]
+        for sid in expired:
+            _sessions.pop(sid, None)
+            _session_timestamps.pop(sid, None)
+            shutil.rmtree(UPLOAD_DIR / sid, ignore_errors=True)
+        if expired:
+            print(f"[cleanup] Removed {len(expired)} expired sessions")
+
+# _sessions and _session_timestamps declared above near app startup
 
 
 # ── OpenAI tool definitions ───────────────────────────────────────────────────
@@ -365,6 +414,40 @@ def _check_file_limit_user(google_id: str) -> None:
         conn.close()
 
 
+def _check_daily_message_limit(google_id: str, tier: str) -> None:
+    """Hard daily cap for paid users — stops scripted abuse."""
+    limit = PRO_MESSAGES_PER_DAY if tier == "pro" else BYOK_MESSAGES_PER_DAY
+    if limit == 0:
+        return
+    today = date.today().isoformat()
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        row = conn.execute(
+            "SELECT messages_today, last_message_date FROM users WHERE google_id = ?",
+            (google_id,),
+        ).fetchone()
+        if not row:
+            return
+        msgs_today, last_msg_date = row
+        if last_msg_date != today:
+            msgs_today = 0
+        if msgs_today >= limit:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": "daily_limit",
+                    "message": f"Daily message limit ({limit}) reached. Resets at midnight.",
+                },
+            )
+        conn.execute(
+            "UPDATE users SET messages_today = ?, last_message_date = ? WHERE google_id = ?",
+            (msgs_today + 1, today, google_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _get_user_tier(google_id: str) -> str:
     """Return 'pro' or 'free' for a user."""
     conn = sqlite3.connect(str(DB_PATH))
@@ -472,6 +555,8 @@ async def create_checkout(
 @app.post("/stripe-webhook")
 async def stripe_webhook(request: Request):
     """Handle Stripe webhook events to update user tiers."""
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=503, detail="Webhook secret not configured")
     import stripe as _stripe
     payload = await request.body()
     sig = request.headers.get("stripe-signature", "")
@@ -532,7 +617,11 @@ async def convert(
 
     suffix = Path(file.filename or "upload.step").suffix.lower() or ".step"
     input_path = session_dir / f"input{suffix}"
-    input_path.write_bytes(await file.read())
+    content = await file.read()
+    if len(content) > MAX_FILE_MB * 1024 * 1024:
+        shutil.rmtree(session_dir, ignore_errors=True)
+        raise HTTPException(status_code=413, detail=f"File too large — maximum size is {MAX_FILE_MB}MB.")
+    input_path.write_bytes(content)
 
     loop = asyncio.get_event_loop()
     try:
@@ -549,6 +638,7 @@ async def convert(
 
     result["message_count"] = 0
     _sessions[session_id] = result
+    _session_timestamps[session_id] = time.time()
 
     images = []
     for img_path_str in result.get("image_paths", []):
@@ -585,6 +675,10 @@ async def chat(
       - First FREE_MESSAGES_PER_SESSION messages: server key, no X-OpenAI-Key needed
       - After that: X-OpenAI-Key required (BYOK), up to BYOK_MESSAGES_PER_SESSION
     """
+    # Validate model before doing anything else
+    if x_model not in ALLOWED_MODELS:
+        x_model = "gpt-4o-mini"
+
     user = None if DISABLE_AUTH else _get_current_user(authorization)
     user_tier = "pro" if DISABLE_AUTH else _get_user_tier(user["sub"])
 
@@ -642,8 +736,21 @@ async def chat(
                 },
             )
 
+    # Daily message cap for paid tiers (stops scripted abuse)
+    if not DISABLE_AUTH and user and user_tier in ("pro", "byok"):
+        _check_daily_message_limit(user["sub"], user_tier)
+
     body = await request.json()
     user_messages: list[dict] = body.get("messages", [])
+
+    # Cap history length and individual message size
+    user_messages = user_messages[-MAX_HISTORY_MESSAGES:]
+    for msg in user_messages:
+        if isinstance(msg.get("content"), str) and len(msg["content"]) > MAX_MESSAGE_CHARS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Message too long — maximum {MAX_MESSAGE_CHARS} characters.",
+            )
 
     # Increment before the call so concurrent requests don't double-dip free quota
     session["message_count"] = msg_count + 1
