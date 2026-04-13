@@ -51,7 +51,8 @@ GOOGLE_CLIENT_ID = os.environ.get(
 # ── Stripe ────────────────────────────────────────────────────────────────────
 STRIPE_SECRET_KEY     = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
-STRIPE_PRICE_ID       = os.environ.get("STRIPE_PRICE_ID", "")   # $9/month recurring price
+STRIPE_PRICE_ID       = os.environ.get("STRIPE_PRICE_ID", "")       # $9/month Pro
+STRIPE_BYOK_PRICE_ID  = os.environ.get("STRIPE_BYOK_PRICE_ID", "")  # $3/month BYOK
 TRIAL_DAYS            = 3
 TRIAL_AMOUNT_CENTS    = 100  # $1
 
@@ -273,8 +274,9 @@ CADVERT_TOOLS = [
 @app.get("/config")
 async def config():
     return JSONResponse({
-        "disable_auth":   DISABLE_AUTH,
-        "stripe_enabled": bool(STRIPE_SECRET_KEY and STRIPE_PRICE_ID),
+        "disable_auth":        DISABLE_AUTH,
+        "stripe_enabled":      bool(STRIPE_SECRET_KEY and STRIPE_PRICE_ID),
+        "stripe_byok_enabled": bool(STRIPE_SECRET_KEY and STRIPE_BYOK_PRICE_ID),
     })
 
 
@@ -405,8 +407,8 @@ async def create_checkout(
     request: Request,
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
 ):
-    """Create a Stripe Checkout session for the Pro subscription."""
-    if not STRIPE_SECRET_KEY or not STRIPE_PRICE_ID:
+    """Create a Stripe Checkout session. plan: 'pro' ($9/mo) or 'byok' ($3/mo)."""
+    if not STRIPE_SECRET_KEY:
         raise HTTPException(status_code=503, detail="Payments not configured")
     import stripe as _stripe
 
@@ -415,6 +417,13 @@ async def create_checkout(
 
     body = await request.json()
     origin = body.get("origin", "http://localhost:8080")
+    plan   = body.get("plan", "pro")  # 'pro' or 'byok'
+
+    price_id = STRIPE_BYOK_PRICE_ID if plan == "byok" else STRIPE_PRICE_ID
+    if not price_id:
+        raise HTTPException(status_code=503, detail=f"Stripe price not configured for plan: {plan}")
+
+    plan_name = "CADVERT BYOK" if plan == "byok" else "CADVERT Pro"
 
     # Get or create Stripe customer
     conn = sqlite3.connect(str(DB_PATH))
@@ -442,18 +451,19 @@ async def create_checkout(
         customer=customer_id,
         mode="subscription",
         payment_method_types=["card"],
-        line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
+        line_items=[{"price": price_id, "quantity": 1}],
         subscription_data={
             "trial_period_days": TRIAL_DAYS,
+            "metadata": {"plan": plan},
             "add_invoice_items": [{
                 "price_data": {
                     "currency": "usd",
-                    "product_data": {"name": "CADVERT Pro — 3-day trial"},
+                    "product_data": {"name": f"{plan_name} — 3-day trial"},
                     "unit_amount": TRIAL_AMOUNT_CENTS,
                 },
             }],
         },
-        success_url=f"{origin}?upgraded=1",
+        success_url=f"{origin}?upgraded={plan}",
         cancel_url=f"{origin}?upgraded=0",
     )
     return JSONResponse({"checkout_url": session.url})
@@ -474,14 +484,28 @@ async def stripe_webhook(request: Request):
     data  = event["data"]["object"]
 
     if etype == "checkout.session.completed":
-        _set_user_tier_by_customer(data["customer"], "pro", data.get("subscription"))
+        sub_id = data.get("subscription")
+        # Retrieve subscription to read the plan metadata
+        plan = "pro"
+        if sub_id:
+            try:
+                sub = _stripe.Subscription.retrieve(sub_id)
+                plan = sub.get("metadata", {}).get("plan", "pro")
+            except Exception:
+                pass
+        tier = "byok" if plan == "byok" else "pro"
+        _set_user_tier_by_customer(data["customer"], tier, sub_id)
 
     elif etype in ("customer.subscription.deleted", "customer.subscription.paused"):
         _set_user_tier_by_customer(data["customer"], "free", None)
 
     elif etype == "customer.subscription.updated":
         status = data.get("status", "")
-        tier = "pro" if status in ("active", "trialing") else "free"
+        if status in ("active", "trialing"):
+            plan = data.get("metadata", {}).get("plan", "pro")
+            tier = "byok" if plan == "byok" else "pro"
+        else:
+            tier = "free"
         _set_user_tier_by_customer(data["customer"], tier, data.get("id"))
 
     elif etype == "invoice.payment_failed":
@@ -574,10 +598,21 @@ async def chat(
 
     # Decide which key to use based on tier
     if user_tier == "pro":
-        # Pro users: server always pays, no message cap
+        # Pro: server pays, no cap
         if not SERVER_OPENAI_KEY:
             raise HTTPException(status_code=503, detail="Server API key not configured.")
         api_key = SERVER_OPENAI_KEY
+    elif user_tier == "byok":
+        # BYOK paid tier: their key required, but no message cap
+        if not x_openai_key:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": "byok_key_required",
+                    "message": "Enter your OpenAI API key to continue (included in your BYOK plan).",
+                },
+            )
+        api_key = x_openai_key
     elif msg_count < FREE_MESSAGES_PER_SESSION:
         # Free tier: server pays first N messages
         if not SERVER_OPENAI_KEY:
@@ -587,13 +622,13 @@ async def chat(
             )
         api_key = SERVER_OPENAI_KEY
     else:
-        # BYOK required
+        # Free tier exhausted — show upgrade wall
         if not x_openai_key:
             raise HTTPException(
                 status_code=429,
                 detail={
                     "error": "byok_required",
-                    "message": "You've used your 3 free messages. Upgrade to Pro or enter your OpenAI key.",
+                    "message": "You've used your 3 free messages. Upgrade to continue.",
                     "messages_used": msg_count,
                 },
             )
