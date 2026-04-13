@@ -1314,13 +1314,13 @@
   <div class="wall-box">
     <div class="wall-icon">🔑</div>
     <div class="wall-title">You've used your 3 free messages</div>
-    <div class="wall-sub">Enter your OpenAI API key to keep going — your key goes directly to OpenAI, we never store it.</div>
+    <div class="wall-sub">Upgrade to Pro for unlimited AI chat — $1 for 3 days, then $9/month. Cancel anytime.</div>
+    <button class="wall-cta" onclick="upgradeToProCheckout()">Upgrade to Pro — $1 trial</button>
+    <div class="wall-divider">or use your own OpenAI key</div>
     <div class="wall-input-row">
       <input type="password" id="byokKeyInput" placeholder="sk-..." autocomplete="off">
       <button class="btn btn-primary" onclick="submitByokKey()" style="padding:8px 14px;font-size:12px;">Continue</button>
     </div>
-    <div class="wall-divider">or</div>
-    <a class="wall-cta" href="#" target="_blank">Get the Desktop App — $20</a>
     <div class="wall-tomorrow">No API key? Come back tomorrow for 3 more free messages.</div>
   </div>
 </div>
@@ -1375,16 +1375,15 @@ let streaming = false;
 let messagesSent = 0;          // tracked client-side for counter display
 const FREE_MSGS = 3;           // must match server FREE_MESSAGES_PER_SESSION
 let byokKey = null;            // set after user enters key in BYOK modal
-let googleToken = null;        // current Google ID token (Bearer)
-let currentUser = null;        // { google_id, email, name, picture }
+let googleToken = sessionStorage.getItem('cadvert_token') || null;
+let currentUser = JSON.parse(sessionStorage.getItem('cadvert_user') || 'null');
 
 // ── Google Auth ──────────────────────────────────────────────────────────────
 const GOOGLE_CLIENT_ID = '257835361477-e8d4ebui9tm1pa6dssb5gguh7v1mjt0g.apps.googleusercontent.com';
+let STRIPE_ENABLED = false; // set from /config on load
 
 function onGoogleSignIn(response) {
-  // Called by GIS with a credential JWT
   googleToken = response.credential;
-  // Verify with server and upsert user
   fetch('/auth/verify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1393,13 +1392,16 @@ function onGoogleSignIn(response) {
     .then(r => r.ok ? r.json() : Promise.reject(r))
     .then(user => {
       currentUser = user;
+      sessionStorage.setItem('cadvert_token', googleToken);
+      sessionStorage.setItem('cadvert_user', JSON.stringify(user));
       _showLoggedIn();
     })
     .catch(err => {
       console.error('Auth failed', err);
       showToast('Sign-in failed — please try again');
-      googleToken = null;
-      currentUser = null;
+      googleToken = null; currentUser = null;
+      sessionStorage.removeItem('cadvert_token');
+      sessionStorage.removeItem('cadvert_user');
     });
 }
 
@@ -1424,11 +1426,30 @@ function _showLoggedIn() {
     fallback.textContent = (currentUser.name || currentUser.email || 'U')[0].toUpperCase();
   }
   document.getElementById('userNameEl').textContent = (currentUser.name || currentUser.email || '').split(' ')[0];
+  _updateTierBadge();
+}
+
+function upgradeToProCheckout() {
+  if (!STRIPE_ENABLED) { showToast('Payments not configured yet'); return; }
+  const origin = window.location.origin;
+  fetch('/create-checkout', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(googleToken ? { 'Authorization': `Bearer ${googleToken}` } : {}),
+    },
+    body: JSON.stringify({ origin }),
+  })
+    .then(r => r.ok ? r.json() : Promise.reject(r))
+    .then(data => { window.location.href = data.checkout_url; })
+    .catch(() => showToast('Could not start checkout — try again'));
 }
 
 function signOut() {
   googleToken = null;
   currentUser = null;
+  sessionStorage.removeItem('cadvert_token');
+  sessionStorage.removeItem('cadvert_user');
   // Hide user pill
   document.getElementById('userPill').style.display = 'none';
   // Reset session
@@ -1513,9 +1534,61 @@ window.onGisLoad = function() {
     if (e.key === 'Enter') submitByokKey();
   });
 
-  // Render GIS button (GIS script may already be loaded, or fires onGisLoad)
-  if (typeof google !== 'undefined') _renderGisButton();
+  fetch('/config').then(r => r.json()).then(cfg => {
+    window.STRIPE_ENABLED = cfg.stripe_enabled || false;
+
+    if (cfg.disable_auth) {
+      currentUser = { google_id: 'dev', email: 'dev@local', name: 'Dev', picture: '', tier: 'pro' };
+      googleToken = 'dev';
+      _showLoggedIn();
+      _handleUpgradeReturn();
+    } else if (googleToken && currentUser) {
+      // Restore session from sessionStorage (e.g. returning from Stripe checkout)
+      _showLoggedIn();
+      _handleUpgradeReturn();
+    } else {
+      if (typeof google !== 'undefined') _renderGisButton();
+    }
+  }).catch(() => {
+    if (typeof google !== 'undefined') _renderGisButton();
+  });
 })();
+
+function _handleUpgradeReturn() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('upgraded') === '1') {
+    // Refresh user tier from server
+    fetch('/auth/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credential: googleToken }),
+    }).then(r => r.ok ? r.json() : null).then(user => {
+      if (user) {
+        currentUser = user;
+        sessionStorage.setItem('cadvert_user', JSON.stringify(user));
+        _updateTierBadge();
+        showToast('Welcome to CADVERT Pro! Unlimited messages activated.', 'success');
+      }
+    }).catch(() => {});
+    window.history.replaceState({}, '', window.location.pathname);
+  } else if (params.get('upgraded') === '0') {
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+}
+
+function _updateTierBadge() {
+  const pill = document.getElementById('userPill');
+  if (!pill) return;
+  const existing = document.getElementById('proBadge');
+  if (existing) existing.remove();
+  if (currentUser && currentUser.tier === 'pro') {
+    const badge = document.createElement('span');
+    badge.id = 'proBadge';
+    badge.textContent = 'Pro';
+    badge.style.cssText = 'font-size:10px;font-weight:700;background:var(--accent);color:#fff;padding:2px 7px;border-radius:5px;';
+    document.getElementById('userNameEl').after(badge);
+  }
+}
 
 // ── Theme ────────────────────────────────────────────────────────────────────
 function setTheme(theme) {

@@ -15,6 +15,16 @@ import shutil
 import sqlite3
 import tempfile
 import uuid
+
+# Load .env file from project root if it exists (stdlib only, no dotenv needed)
+_env_path = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+if os.path.exists(_env_path):
+    with open(_env_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
@@ -32,20 +42,35 @@ UPLOAD_DIR = Path(tempfile.gettempdir()) / "cadvert_sessions"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
+DISABLE_AUTH = os.environ.get("DISABLE_AUTH", "0") == "1"
 GOOGLE_CLIENT_ID = os.environ.get(
     "GOOGLE_CLIENT_ID",
     "257835361477-e8d4ebui9tm1pa6dssb5gguh7v1mjt0g.apps.googleusercontent.com",
 )
 
+# ── Stripe ────────────────────────────────────────────────────────────────────
+STRIPE_SECRET_KEY     = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_PRICE_ID       = os.environ.get("STRIPE_PRICE_ID", "")   # $9/month recurring price
+TRIAL_DAYS            = 3
+TRIAL_AMOUNT_CENTS    = 100  # $1
+
+if STRIPE_SECRET_KEY:
+    try:
+        import stripe as _stripe
+        _stripe.api_key = STRIPE_SECRET_KEY
+    except ImportError:
+        pass
+
 # ── Tier limits ───────────────────────────────────────────────────────────────
 
-# Server pays for this many messages per session, then requires BYOK
+# Server pays for this many messages per session (free tier), then BYOK wall
 FREE_MESSAGES_PER_SESSION = int(os.environ.get("FREE_MESSAGES_PER_SESSION", "3"))
 # Max files processed per user per day (resets at midnight)
 FREE_FILES_PER_DAY = int(os.environ.get("FREE_FILES_PER_DAY", "1"))
-# BYOK users still cap at this many messages per session (0 = unlimited)
+# BYOK users cap (0 = unlimited)
 BYOK_MESSAGES_PER_SESSION = int(os.environ.get("BYOK_MESSAGES_PER_SESSION", "20"))
-# Server's own OpenAI key (pays for the free messages)
+# Server's own OpenAI key (pays for free + pro messages)
 SERVER_OPENAI_KEY: Optional[str] = os.environ.get("OPENAI_API_KEY")
 
 # ── SQLite users DB ────────────────────────────────────────────────────────────
@@ -56,15 +81,28 @@ def _init_db() -> None:
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            google_id      TEXT PRIMARY KEY,
-            email          TEXT NOT NULL,
-            name           TEXT,
-            picture        TEXT,
-            files_today    INTEGER DEFAULT 0,
-            last_file_date TEXT,
-            created_at     TEXT DEFAULT (date('now'))
+            google_id              TEXT PRIMARY KEY,
+            email                  TEXT NOT NULL,
+            name                   TEXT,
+            picture                TEXT,
+            tier                   TEXT DEFAULT 'free',
+            stripe_customer_id     TEXT,
+            stripe_subscription_id TEXT,
+            files_today            INTEGER DEFAULT 0,
+            last_file_date         TEXT,
+            created_at             TEXT DEFAULT (date('now'))
         )
     """)
+    # Migrate existing DBs that lack the new columns
+    for col, definition in [
+        ("tier",                   "TEXT DEFAULT 'free'"),
+        ("stripe_customer_id",     "TEXT"),
+        ("stripe_subscription_id", "TEXT"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
+        except Exception:
+            pass
     conn.commit()
     conn.close()
 
@@ -232,6 +270,14 @@ CADVERT_TOOLS = [
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+@app.get("/config")
+async def config():
+    return JSONResponse({
+        "disable_auth":   DISABLE_AUTH,
+        "stripe_enabled": bool(STRIPE_SECRET_KEY and STRIPE_PRICE_ID),
+    })
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     html_path = STATIC_DIR / "index.html"
@@ -257,6 +303,8 @@ def _verify_google_token(credential: str) -> dict:
 
 def _get_current_user(authorization: Optional[str]) -> dict:
     """Extract & verify Bearer token; return user dict with google_id, email, name, picture."""
+    if DISABLE_AUTH:
+        return {"sub": "dev", "email": "dev@local", "name": "Dev", "picture": ""}
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Login required")
     token = authorization[len("Bearer "):]
@@ -315,6 +363,24 @@ def _check_file_limit_user(google_id: str) -> None:
         conn.close()
 
 
+def _get_user_tier(google_id: str) -> str:
+    """Return 'pro' or 'free' for a user."""
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute("SELECT tier FROM users WHERE google_id = ?", (google_id,)).fetchone()
+    conn.close()
+    return (row[0] or "free") if row else "free"
+
+
+def _set_user_tier_by_customer(customer_id: str, tier: str, subscription_id: Optional[str]) -> None:
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute(
+        "UPDATE users SET tier = ?, stripe_subscription_id = ? WHERE stripe_customer_id = ?",
+        (tier, subscription_id, customer_id),
+    )
+    conn.commit()
+    conn.close()
+
+
 @app.post("/auth/verify")
 async def auth_verify(request: Request):
     """Verify a Google credential and upsert the user. Returns user info."""
@@ -324,12 +390,105 @@ async def auth_verify(request: Request):
         raise HTTPException(status_code=400, detail="credential required")
     payload = _verify_google_token(credential)
     _upsert_user(payload)
+    tier = _get_user_tier(payload["sub"])
     return JSONResponse({
         "google_id": payload["sub"],
         "email":     payload.get("email", ""),
         "name":      payload.get("name", ""),
         "picture":   payload.get("picture", ""),
+        "tier":      tier,
     })
+
+
+@app.post("/create-checkout")
+async def create_checkout(
+    request: Request,
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+):
+    """Create a Stripe Checkout session for the Pro subscription."""
+    if not STRIPE_SECRET_KEY or not STRIPE_PRICE_ID:
+        raise HTTPException(status_code=503, detail="Payments not configured")
+    import stripe as _stripe
+
+    user = _get_current_user(authorization)
+    google_id = user["sub"]
+
+    body = await request.json()
+    origin = body.get("origin", "http://localhost:8080")
+
+    # Get or create Stripe customer
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute(
+        "SELECT stripe_customer_id FROM users WHERE google_id = ?", (google_id,)
+    ).fetchone()
+    conn.close()
+    customer_id = row[0] if row and row[0] else None
+
+    if not customer_id:
+        customer = _stripe.Customer.create(
+            email=user.get("email", ""),
+            metadata={"google_id": google_id},
+        )
+        customer_id = customer.id
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.execute(
+            "UPDATE users SET stripe_customer_id = ? WHERE google_id = ?",
+            (customer_id, google_id),
+        )
+        conn.commit()
+        conn.close()
+
+    session = _stripe.checkout.Session.create(
+        customer=customer_id,
+        mode="subscription",
+        payment_method_types=["card"],
+        line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
+        subscription_data={
+            "trial_period_days": TRIAL_DAYS,
+            "add_invoice_items": [{
+                "price_data": {
+                    "currency": "usd",
+                    "product_data": {"name": "CADVERT Pro — 3-day trial"},
+                    "unit_amount": TRIAL_AMOUNT_CENTS,
+                },
+            }],
+        },
+        success_url=f"{origin}?upgraded=1",
+        cancel_url=f"{origin}?upgraded=0",
+    )
+    return JSONResponse({"checkout_url": session.url})
+
+
+@app.post("/stripe-webhook")
+async def stripe_webhook(request: Request):
+    """Handle Stripe webhook events to update user tiers."""
+    import stripe as _stripe
+    payload = await request.body()
+    sig = request.headers.get("stripe-signature", "")
+    try:
+        event = _stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    etype = event["type"]
+    data  = event["data"]["object"]
+
+    if etype == "checkout.session.completed":
+        _set_user_tier_by_customer(data["customer"], "pro", data.get("subscription"))
+
+    elif etype in ("customer.subscription.deleted", "customer.subscription.paused"):
+        _set_user_tier_by_customer(data["customer"], "free", None)
+
+    elif etype == "customer.subscription.updated":
+        status = data.get("status", "")
+        tier = "pro" if status in ("active", "trialing") else "free"
+        _set_user_tier_by_customer(data["customer"], tier, data.get("id"))
+
+    elif etype == "invoice.payment_failed":
+        # Grace — don't downgrade immediately, Stripe will retry
+        pass
+
+    return JSONResponse({"ok": True})
 
 
 @app.post("/convert")
@@ -340,7 +499,8 @@ async def convert(
 ):
     """Upload a CAD file and run the full CADVERT pipeline."""
     user = _get_current_user(authorization)
-    _check_file_limit_user(user["sub"])
+    if not DISABLE_AUTH:
+        _check_file_limit_user(user["sub"])
 
     session_id = str(uuid.uuid4())
     session_dir = UPLOAD_DIR / session_id
@@ -401,7 +561,10 @@ async def chat(
       - First FREE_MESSAGES_PER_SESSION messages: server key, no X-OpenAI-Key needed
       - After that: X-OpenAI-Key required (BYOK), up to BYOK_MESSAGES_PER_SESSION
     """
-    _get_current_user(authorization)  # 401 if not logged in
+    user = None if DISABLE_AUTH else _get_current_user(authorization)
+    user_tier = "free"
+    if user and not DISABLE_AUTH:
+        user_tier = _get_user_tier(user["sub"])
 
     session = _sessions.get(session_id)
     if not session:
@@ -409,9 +572,14 @@ async def chat(
 
     msg_count = session.get("message_count", 0)
 
-    # Decide which key to use
-    if msg_count < FREE_MESSAGES_PER_SESSION:
-        # Server pays
+    # Decide which key to use based on tier
+    if user_tier == "pro":
+        # Pro users: server always pays, no message cap
+        if not SERVER_OPENAI_KEY:
+            raise HTTPException(status_code=503, detail="Server API key not configured.")
+        api_key = SERVER_OPENAI_KEY
+    elif msg_count < FREE_MESSAGES_PER_SESSION:
+        # Free tier: server pays first N messages
         if not SERVER_OPENAI_KEY:
             raise HTTPException(
                 status_code=503,
@@ -425,7 +593,7 @@ async def chat(
                 status_code=429,
                 detail={
                     "error": "byok_required",
-                    "message": "You've used your 3 free messages. Enter your OpenAI API key to continue.",
+                    "message": "You've used your 3 free messages. Upgrade to Pro or enter your OpenAI key.",
                     "messages_used": msg_count,
                 },
             )
