@@ -586,9 +586,7 @@ async def chat(
       - After that: X-OpenAI-Key required (BYOK), up to BYOK_MESSAGES_PER_SESSION
     """
     user = None if DISABLE_AUTH else _get_current_user(authorization)
-    user_tier = "free"
-    if user and not DISABLE_AUTH:
-        user_tier = _get_user_tier(user["sub"])
+    user_tier = "pro" if DISABLE_AUTH else _get_user_tier(user["sub"])
 
     session = _sessions.get(session_id)
     if not session:
