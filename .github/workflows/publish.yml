@@ -24,12 +24,6 @@ jobs:
       - name: Install build tools
         run: pip install hatch
 
-      - name: Set version from tag
-        run: |
-          TAG="${{ github.ref_name }}"
-          VERSION="${TAG#v}"
-          hatch version "$VERSION"
-
       - name: Build distribution
         run: hatch build
 
