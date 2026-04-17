@@ -7,22 +7,37 @@ name = "cadvert"
 version = "0.1.0"
 description = "Convert CAD files into LLM-readable Hierarchical Spatial Documents"
 requires-python = ">=3.10"
+
+# Library core — geometry analysis + HSD output only.
+# No server, no UI, no LLM calls.
 dependencies = [
     "cadquery-ocp",
     "numpy",
-    "fastapi",
-    "uvicorn[standard]",
-    "python-multipart",
-    "openai>=1.0",
 ]
 
 [project.optional-dependencies]
+# cadvert-server command + REST API
+server = [
+    "fastapi",
+    "uvicorn[standard]",
+    "python-multipart",
+]
+# LLM semantic enrichment (HSD narrative annotations)
+llm = [
+    "openai>=1.0",
+]
+# OBJ / STL mesh support
+mesh = [
+    "trimesh",
+]
+# Full desktop / server install — everything
+full = [
+    "cadvert[server,llm,mesh]",
+]
+# Development
 dev = [
     "pytest",
     "pytest-cov",
-]
-mesh = [
-    "trimesh",   # OBJ file support
 ]
 
 [project.scripts]
