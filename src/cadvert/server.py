@@ -337,6 +337,14 @@ async def index():
     return HTMLResponse(html_path.read_text(encoding="utf-8"))
 
 
+@app.get("/developers", response_class=HTMLResponse)
+async def developers():
+    html_path = STATIC_DIR / "developers.html"
+    if not html_path.exists():
+        raise HTTPException(status_code=500, detail="developers.html not found")
+    return HTMLResponse(html_path.read_text(encoding="utf-8"))
+
+
 def _verify_google_token(credential: str) -> dict:
     """Verify a Google ID token (from GIS) and return the decoded payload."""
     try:

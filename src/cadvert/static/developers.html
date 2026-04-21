@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CADVERT — For Developers</title>
+  <link rel="preconnect" href="https://fonts.cdnfonts.com">
+  <link href="https://fonts.cdnfonts.com/css/satoshi" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #FAFAF8;
+      --surface:     #FFFFFF;
+      --surface-alt: #F5F5F3;
+      --border:      #EBEBEA;
+      --accent:      #1A1A1A;
+      --accent-soft: rgba(26,26,26,0.08);
+      --text:        #1A1A1A;
+      --text-muted:  #888888;
+      --text-dim:    #999999;
+      --success:     #1B7A3D;
+      --success-bg:  #E8F5EC;
+      --danger:      #DC3545;
+      --warning:     #B8860B;
+      --warning-bg:  rgba(184,134,11,0.12);
+      --logo-bg:     #1A1A1A;
+      --font:        'Satoshi', -apple-system, system-ui, sans-serif;
+      --mono:        'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+      --code-bg:     #F0F0EE;
+      --code-text:   #1A1A1A;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg:          #111116;
+        --surface:     #18181E;
+        --surface-alt: rgba(255,255,255,0.03);
+        --border:      #26262E;
+        --accent:      #5B6CFF;
+        --accent-soft: rgba(91,108,255,0.08);
+        --text:        #E0E0E4;
+        --text-muted:  #666666;
+        --text-dim:    #555555;
+        --success:     #2BB464;
+        --success-bg:  rgba(43,180,100,0.12);
+        --danger:      #F87171;
+        --warning:     #FBBF24;
+        --warning-bg:  rgba(251,191,36,0.12);
+        --logo-bg:     #5B6CFF;
+        --code-bg:     #0D0D12;
+        --code-text:   #C8C8D0;
+      }
+    }
+
+    [data-theme="dark"] {
+      --bg:          #111116;
+      --surface:     #18181E;
+      --surface-alt: rgba(255,255,255,0.03);
+      --border:      #26262E;
+      --accent:      #5B6CFF;
+      --accent-soft: rgba(91,108,255,0.08);
+      --text:        #E0E0E4;
+      --text-muted:  #666666;
+      --text-dim:    #555555;
+      --success:     #2BB464;
+      --success-bg:  rgba(43,180,100,0.12);
+      --danger:      #F87171;
+      --warning:     #FBBF24;
+      --warning-bg:  rgba(251,191,36,0.12);
+      --logo-bg:     #5B6CFF;
+      --code-bg:     #0D0D12;
+      --code-text:   #C8C8D0;
+    }
+
+    [data-theme="light"] {
+      --bg:          #FAFAF8;
+      --surface:     #FFFFFF;
+      --surface-alt: #F5F5F3;
+      --border:      #EBEBEA;
+      --accent:      #1A1A1A;
+      --accent-soft: rgba(26,26,26,0.08);
+      --text:        #1A1A1A;
+      --text-muted:  #888888;
+      --text-dim:    #999999;
+      --success:     #1B7A3D;
+      --success-bg:  #E8F5EC;
+      --danger:      #DC3545;
+      --warning:     #B8860B;
+      --warning-bg:  rgba(184,134,11,0.12);
+      --logo-bg:     #1A1A1A;
+      --code-bg:     #F0F0EE;
+      --code-text:   #1A1A1A;
+    }
+
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.7;
+      transition: background 200ms, color 200ms;
+    }
+
+    /* ── Header ── */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      transition: background 200ms, border-color 200ms;
+    }
+
+    .logo-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      flex-shrink: 0;
+    }
+
+    .logo-mark {
+      width: 24px;
+      height: 24px;
+      border-radius: 7px;
+      background: var(--logo-bg);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 200ms;
+    }
+
+    .logo-text {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: var(--text);
+      transition: color 200ms;
+    }
+
+    .header-badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 5px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+    }
+
+    .header-spacer { flex: 1; }
+
+    .theme-toggle {
+      display: flex;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 2px;
+      gap: 1px;
+    }
+
+    .theme-pill {
+      padding: 3px 10px;
+      border-radius: 6px;
+      border: none;
+      font-size: 11px;
+      font-weight: 500;
+      font-family: var(--font);
+      cursor: pointer;
+      background: transparent;
+      color: var(--text-muted);
+      transition: background 150ms, color 150ms, box-shadow 150ms;
+      line-height: 1.6;
+    }
+
+    .theme-pill.active {
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    .btn-app {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: var(--font);
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity 150ms;
+      white-space: nowrap;
+    }
+
+    .btn-app:hover { opacity: 0.85; }
+
+    /* ── Page layout ── */
+    .page {
+      display: flex;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+      gap: 48px;
+    }
+
+    /* ── Sidebar TOC ── */
+    .toc {
+      width: 200px;
+      flex-shrink: 0;
+      padding-top: 48px;
+    }
+
+    .toc-inner {
+      position: sticky;
+      top: 72px;
+    }
+
+    .toc-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+    }
+
+    .toc-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .toc-list a {
+      display: block;
+      font-size: 12px;
+      color: var(--text-dim);
+      text-decoration: none;
+      padding: 4px 0;
+      transition: color 150ms;
+    }
+
+    .toc-list a:hover,
+    .toc-list a.active {
+      color: var(--text);
+    }
+
+    .toc-list .toc-sub {
+      padding-left: 20px;
+      font-size: 11px;
+    }
+
+    /* ── Main content ── */
+    .content {
+      flex: 1;
+      min-width: 0;
+      padding: 48px 0 96px;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      margin-bottom: 56px;
+    }
+
+    .hero-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+
+    .hero h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.8px;
+      line-height: 1.15;
+      color: var(--text);
+      margin-bottom: 16px;
+    }
+
+    .hero p {
+      font-size: 15px;
+      color: var(--text-muted);
+      max-width: 600px;
+      line-height: 1.7;
+      margin-bottom: 24px;
+    }
+
+    .install-strip {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      max-width: 420px;
+    }
+
+    .install-strip code {
+      flex: 1;
+      padding: 10px 16px;
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--code-text);
+    }
+
+    .copy-btn {
+      padding: 10px 14px;
+      border: none;
+      border-left: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-family: var(--font);
+      font-weight: 600;
+      cursor: pointer;
+      transition: color 150ms, background 150ms;
+      white-space: nowrap;
+    }
+
+    .copy-btn:hover { color: var(--text); background: var(--surface-alt); }
+    .copy-btn.copied { color: var(--success); }
+
+    /* ── Sections ── */
+    section {
+      margin-bottom: 56px;
+    }
+
+    .section-anchor {
+      display: block;
+      height: 64px;
+      margin-top: -64px;
+      visibility: hidden;
+    }
+
+    h2 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.4px;
+      color: var(--text);
+      margin-bottom: 8px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      margin: 24px 0 8px;
+    }
+
+    p { color: var(--text-muted); margin-bottom: 12px; }
+    p:last-child { margin-bottom: 0; }
+
+    ul, ol {
+      margin: 8px 0 16px 20px;
+      color: var(--text-muted);
+    }
+
+    li { margin-bottom: 4px; }
+
+    code {
+      font-family: var(--mono);
+      font-size: 12px;
+      background: var(--code-bg);
+      padding: 1px 5px;
+      border-radius: 4px;
+      color: var(--code-text);
+    }
+
+    /* ── Code blocks ── */
+    .code-block {
+      position: relative;
+      margin: 16px 0;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .code-block-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px 0;
+      background: var(--code-bg);
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: var(--mono);
+    }
+
+    .code-block pre {
+      background: var(--code-bg);
+      padding: 12px 16px 16px;
+      overflow-x: auto;
+      margin: 0;
+    }
+
+    .code-block pre code {
+      background: none;
+      padding: 0;
+      font-size: 12px;
+      line-height: 1.75;
+      color: var(--code-text);
+    }
+
+    .code-copy-btn {
+      padding: 2px 6px;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-dim);
+      font-size: 10px;
+      font-family: var(--font);
+      font-weight: 600;
+      cursor: pointer;
+      transition: color 150ms;
+    }
+
+    .code-copy-btn:hover { color: var(--text-muted); }
+    .code-copy-btn.copied { color: var(--success); }
+
+    /* ── Callout boxes ── */
+    .callout {
+      margin: 16px 0;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .callout.tip { color: var(--success); }
+
+    .callout strong { display: inline; font-size: 13px; font-weight: 700; text-transform: none; letter-spacing: 0; color: inherit; }
+
+    /* ── Format table ── */
+    .format-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 13px;
+    }
+
+    .format-table th {
+      text-align: left;
+      padding: 8px 12px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-dim);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .format-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    .format-table tr:last-child td { border-bottom: none; }
+    .format-table tr:hover td { background: var(--surface-alt); }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .badge-full { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+    .badge-mesh { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+
+    /* ── Return type pills ── */
+    .returns {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 11px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      padding: 2px 8px;
+      border-radius: 5px;
+      margin-bottom: 8px;
+    }
+
+    /* ── Pipeline diagram ── */
+    .pipeline {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      margin: 20px 0;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+
+    .pipe-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      min-width: 110px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .pipe-step-icon { font-size: 16px; margin-bottom: 4px; }
+    .pipe-step-label { font-size: 11px; font-weight: 700; color: var(--text); }
+    .pipe-step-sub { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+
+    .pipe-arrow {
+      font-size: 14px;
+      color: var(--text-dim);
+      padding: 0 6px;
+      flex-shrink: 0;
+    }
+
+    @media (max-width: 768px) {
+      .toc { display: none; }
+      .hero h1 { font-size: 24px; }
+      .page { padding: 0 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <a class="logo-wrap" href="/">
+    <div class="logo-mark">C</div>
+    <div class="logo-text">CADVERT</div>
+  </a>
+  <span class="header-badge">Developers</span>
+
+  <div class="header-spacer"></div>
+
+  <div class="theme-toggle">
+    <button class="theme-pill" id="pill-light" onclick="setTheme('light')">Light</button>
+    <button class="theme-pill" id="pill-dark" onclick="setTheme('dark')">Dark</button>
+  </div>
+
+  <a class="btn-app" href="/">Open App &rarr;</a>
+</header>
+
+<div class="page">
+
+  <!-- TOC Sidebar -->
+  <nav class="toc">
+    <div class="toc-inner">
+      <div class="toc-label">On this page</div>
+      <ul class="toc-list">
+        <li><a href="#install">Installation</a></li>
+        <li><a href="#quickstart">Quick start</a></li>
+        <li><a href="#pipeline">How it works</a></li>
+        <li><a href="#formats">Supported formats</a></li>
+        <li><a href="#api">API reference</a></li>
+        <li><a class="toc-sub" href="#api-ingest">ingest</a></li>
+        <li><a class="toc-sub" href="#api-topology">topology</a></li>
+        <li><a class="toc-sub" href="#api-features">features</a></li>
+        <li><a class="toc-sub" href="#api-spatial">spatial</a></li>
+        <li><a class="toc-sub" href="#api-document">document</a></li>
+        <li><a class="toc-sub" href="#api-renderer">renderer</a></li>
+        <li><a href="#llm-tool">Building an LLM tool</a></li>
+        <li><a href="#claude">Example: Claude tool</a></li>
+        <li><a href="#cli">CLI reference</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <main class="content">
+
+    <!-- Hero -->
+    <div class="hero">
+      <div class="hero-eyebrow">cadvert · python library</div>
+      <h1>Build AI tools that<br>understand CAD files</h1>
+      <p>
+        <code>cadvert</code> is a Python library that reads STEP, IGES, BREP, STL, and OBJ files
+        and converts them into structured text context your LLM can reason about —
+        geometry, features, tolerances, dimensions, and rendered views, all in one call.
+      </p>
+      <div class="install-strip">
+        <code id="installCmd">pip install cadvert</code>
+        <button class="copy-btn" id="installCopyBtn" onclick="copyInstall()">Copy</button>
+      </div>
+    </div>
+
+    <!-- Installation -->
+    <section>
+      <span class="section-anchor" id="install"></span>
+      <h2>Installation</h2>
+      <p>The base package includes CAD parsing and full geometry analysis. Install optional extras for additional capabilities:</p>
+
+      <div class="code-block">
+        <div class="code-block-header">
+          <span>bash</span>
+          <button class="code-copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><code># Core — CAD parsing, topology, features, spatial analysis
+pip install cadvert
+
+# + REST API server (FastAPI + Uvicorn)
+pip install cadvert[server]
+
+# + LLM integration (OpenAI)
+pip install cadvert[llm]
+
+# + Mesh support (OBJ files via trimesh)
+pip install cadvert[mesh]
+
+# Everything
+pip install cadvert[full]</code></pre>
+      </div>
+
+      <p>Requires Python 3.10+. The core package ships <code>cadquery-ocp</code> (OCCT bindings) and <code>numpy</code> — no other heavy dependencies.</p>
+    </section>
+
+    <!-- Quick start -->
+    <section>
+      <span class="section-anchor" id="quickstart"></span>
+      <h2>Quick start</h2>
+      <p>Three lines to go from a CAD file to LLM-ready context:</p>
+
+      <div class="code-block">
+        <div class="code-block-header">
+          <span>python</span>
+          <button class="code-copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><code>from cadvert.ingest import load_step
+from cadvert.topology import build_topology
+from cadvert.features import detect_features
+from cadvert.document import render_tier0
+
+shape, body_count, metadata = load_step("bracket.step")
+graph = build_topology(shape, body_count)
+features = detect_features(graph)
+
+context = render_tier0(graph, "bracket.step", features=features, units=metadata.units)
+print(context)  # → structured text ready to pass to any LLM</code></pre>
+      </div>
+
+      <p><code>render_tier0</code> returns a compact document (~5–15 KB) containing the part's global properties, surface geometry, detected manufacturing features, and spatial relationships — everything an LLM needs to answer questions about the file.</p>
+    </section>
+
+    <!-- Pipeline -->
+    <section>
+      <span class="section-anchor" id="pipeline"></span>
+      <h2>How it works</h2>
+      <p>cadvert runs a five-stage pipeline under the hood. Each stage returns plain Python dataclasses — no OCC objects leak out.</p>
+
+      <div class="pipeline">
+        <div class="pipe-step">
+          <div class="pipe-step-icon">📂</div>
+          <div class="pipe-step-label">load_step</div>
+          <div class="pipe-step-sub">ingest.py</div>
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step">
+          <div class="pipe-step-icon">🗺</div>
+          <div class="pipe-step-label">build_topology</div>
+          <div class="pipe-step-sub">topology.py</div>
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step">
+          <div class="pipe-step-icon">🔩</div>
+          <div class="pipe-step-label">detect_features</div>
+          <div class="pipe-step-sub">features.py</div>
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step">
+          <div class="pipe-step-icon">📐</div>
+          <div class="pipe-step-label">compute_spatial</div>
+          <div class="pipe-step-sub">spatial.py</div>
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step">
+          <div class="pipe-step-icon">📄</div>
+          <div class="pipe-step-label">render_tier0</div>
+          <div class="pipe-step-sub">document.py</div>
+        </div>
+      </div>
+
+      <h3>What's in the output document?</h3>
+      <table class="format-table">
+        <thead>
+          <tr><th>Section</th><th>What's included</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>Global properties</strong></td><td>Bounding box, volume, surface area, center of mass, body count</td></tr>
+          <tr><td><strong>Topology map</strong></td><td>All faces and edges with surface types (plane, cylinder, sphere, NURBS…)</td></tr>
+          <tr><td><strong>Detected features</strong></td><td>Holes (diameter/depth), bosses, fillets, chamfers, slots, patterns</td></tr>
+          <tr><td><strong>Spatial relationships</strong></td><td>Wall thicknesses, feature distances, draft angles, undercuts</td></tr>
+          <tr><td><strong>GD&amp;T annotations</strong></td><td>Tolerances from AP242 STEP files with PMI (if present)</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout tip">
+        <strong>Tip</strong>
+        All geometry is analytical — extracted directly from OCC B-REP, not tessellated.
+        Values match what was authored in the originating CAD software exactly.
+      </div>
+    </section>
+
+    <!-- Supported formats -->
+    <section>
+      <span class="section-anchor" id="formats"></span>
+      <h2>Supported formats</h2>
+
+      <table class="format-table">
+        <thead>
+          <tr><th>Extension</th><th>Format</th><th>Pipeline</th><th>Features &amp; Spatial</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>.step</code> / <code>.stp</code></td>
+            <td>STEP ISO 10303 (AP203, AP214, AP242)</td>
+            <td><span class="badge badge-full">Full B-REP</span></td>
+            <td>Yes — including GD&amp;T for AP242</td>
+          </tr>
+          <tr>
+            <td><code>.iges</code> / <code>.igs</code></td>
+            <td>IGES 5.x</td>
+            <td><span class="badge badge-full">Full B-REP</span></td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <td><code>.brep</code></td>
+            <td>OpenCASCADE native</td>
+            <td><span class="badge badge-full">Full B-REP</span></td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <td><code>.stl</code></td>
+            <td>STereoLithography</td>
+            <td><span class="badge badge-mesh">Mesh only</span></td>
+            <td>Global properties only</td>
+          </tr>
+          <tr>
+            <td><code>.obj</code></td>
+            <td>Wavefront OBJ</td>
+            <td><span class="badge badge-mesh">Mesh only</span></td>
+            <td>Global properties only (requires <code>cadvert[mesh]</code>)</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout note">
+        <strong>Note</strong>
+        Mesh formats (STL, OBJ) don't carry analytical surface definitions, so topology analysis,
+        feature detection, and spatial relationships are not available for them.
+        The output will still include triangle count, bounding box, and surface area.
+      </div>
+    </section>
+
+    <!-- API reference -->
+    <section>
+      <span class="section-anchor" id="api"></span>
+      <h2>API reference</h2>
+
+      <!-- ingest -->
+      <span class="section-anchor" id="api-ingest"></span>
+      <h3>cadvert.ingest</h3>
+      <p>Entry point for loading any supported CAD format.</p>
+
+      <div class="code-block">
+        <div class="code-block-header">
+          <span>python</span>
+          <button class="code-copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><code>from cadvert.ingest import load_step, IngestError, PartMetadata
+
+shape, body_count, metadata = load_step(path: str | Path)
+# shape       → OCC TopoDS_Shape (pass to build_topology / render_shape)
+# body_count  → int, number of distinct solid bodies (0 for mesh files)
+# metadata    → PartMetadata dataclass
+
+# PartMetadata fields:
+metadata.source_format      # "STEP" | "IGES" | "BREP" | "STL" | "OBJ"
+metadata.is_mesh            # True for STL/OBJ — triggers mesh-only pipeline
+metadata.units              # "mm" | "inch" | "m" | ...
+metadata.unit_scale_to_mm   # float multiplier to convert to mm
+metadata.schema             # "AP203" | "AP214" | "AP242" (STEP only)
+metadata.originating_system # CAD software that authored the file
+metadata.description        # FILE_DESCRIPTION from STEP header
+metadata.triangle_count     # populated for mesh formats
+metadata.gdt_annotations    # list[GDTAnnotation] (AP242 PMI only)
+
+# Raises IngestError on unsupported format or parse failure</code></pre>
+      </div>
+
+      <!-- topology -->
+      <span class="section-anchor" id="api-topology"></span>
+      <h3>cadvert.topology</h3>
+      <p>Extracts the full face/edge/vertex graph from a loaded B-REP shape.</p>
+
+      <div class="code-block">
+        <div class="code-block-header">
+          <span>python</span>
+          <button class="code-copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><code>from cadvert.topology import build_topology, TopologyGraph
+
+graph = build_topology(shape, body_count)  # → TopologyGraph
+
+graph.faces           # list[FaceInfo]  — surfaces with geometry + connectivity
+graph.edges           # list[EdgeInfo]  — curves with dihedral angles + convexity
+graph.vertices        # list[VertexInfo]
+graph.bounding_box    # {"X": (min, max), "Y": (...), "Z": (...)}
+graph.volume          # float, native units
+graph.surface_area    # float, native units
+graph.center_of_mass  # (x, y, z)
+graph.body_count      # int
+
+# FaceInfo.geometry dict — surface type determines fields:
+# PLANE:    {"type": "PLANE",    "normal": (nx,ny,nz), "origin": (x,y,z), "d": offset}
+# CYLINDER: {"type": "CYLINDER", "axis_origin": ..., "axis_dir": ..., "radius": r}
+# CONE:     {"type": "CONE",     "apex": ..., "axis_dir": ..., "half_angle": deg}
+# SPHERE:   {"type": "SPHERE",   "center": ..., "radius": r}
+# TORUS:    {"type": "TORUS",    "center": ..., "major_radius": R, "minor_radius": r}
+# NURBS_SURFACE: {"type": "NURBS_SURFACE", "degree_u": ..., "degree_v": ..., ...}
+
+# EdgeInfo.convexity: "convex" | "concave" | "tangent"</code></pre>
+      </div>
+
+      <!-- features -->
+      <span class="section-anchor" id="api-features"></span>
+      <h3>cadvert.features</h3>
+      <p>Detects manufacturing features from the topology graph.</p>
+
+      <div class="code-block">
+        <div class="code-block-header">
+          <span>python</span>
+          <button class="code-copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><code>from cadvert.features import detect_features, DetectedFeature
+
+features = detect_features(graph)  # → list[DetectedFeature]
+
+# DetectedFeature fields:
+feature.feature_type  # "THROUGH_HOLE" | "BLIND_HOLE" | "BOSS" | "FILLET" |
+                      # "CHAMFER" | "POCKET" | "COUNTERBORE" | "COUNTERSINK" |
+                      # "SLOT" | "PATTERN"
+feature.face_ids      # list[int] — which faces comprise this feature
+feature.edge_ids      # list[int]
+feature.parameters    # dict — feature-specific (e.g. diameter, depth, axis for holes)
+feature.confidence    # float 0.0–1.0 (features below 0.4 are suppressed)
+feature.standard_match # str | None — e.g. "M6 clearance", "1/4\" thru"
+feature.notes         # human-readable description</code></pre>
+      </div>
+
+      <!-- spatial -->
+      <span class="section-anchor" id="api-spatial"></span>
+      <h3>cadvert.spatial</h3>
+      <p>Computes distances, wall thicknesses, draft angles, and undercut detection.</p>
+
+      <div class="code-block">
+        <div class="code-block-header">
+          <span>python</span>
+          <button class="code-copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><code>from cadvert.spatial import compute_spatial_relationships
+
+spatial = compute_spatial_relationships(
+    graph,
+    features,
+    shape=shape,                  # optional — enables advanced ray-based analysis
+    pull_direction=(0, 0, 1),     # for draft angle / undercut analysis
+)  # → list[SpatialRelationship]
+
+# SpatialRelationship fields:
+rel.description  # "Wall thickness" | "Draft angle" | "Distance" | ...
+rel.value        # float — mm (or degrees for angles)
+rel.from_ref     # e.g. "hole_1", "F42"
+rel.to_ref       # e.g. "outer_surface", "F10"
+rel.notes        # additional context</code></pre>
+      </div>
+
+      <!-- document -->
+      <span class="section-anchor" id="api-document"></span>
+      <h3>cadvert.document</h3>
+      <p>Renders the analysis results into structured text for LLM consumption.</p>
+
+      <div class="code-block">
+        <div class="code-block-header">
+          <span>python</span>
+          <button class="code-copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><code>from cadvert.document import render_tier0, render_document
+
+# Compact summary — best for LLM system prompts (~5–15 KB)
+text = render_tier0(
+    graph,
+    source_path,
+    features=features,           # optional
+    spatial=spatial,             # optional
+    units=metadata.units,
+    gdt_annotations=metadata.gdt_annotations,  # optional
+)
+
+# Full multi-section HSD document — complete topology dump
+full_text = render_document(
+    graph,
+    source_path,
+    part_name=None,              # override display name
+    features=features,
+    spatial=spatial,
+    rendered_views=views,        # list of PNG paths from render_shape()
+    validation_report=None,
+    units=metadata.units,
+    gdt_annotations=metadata.gdt_annotations,
+    mesh_info=None,
+)</code></pre>
+      </div>
+
+      <!-- renderer -->
+      <span class="section-anchor" id="api-renderer"></span>
+      <h3>cadvert.renderer</h3>
+      <p>Renders 8 standard orthographic + isometric views as PNG files.</p>
+
+      <div class="code-block">
+        <div class="code-block-header">
+          <span>python</span>
+          <button class="code-copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><code>from cadvert.renderer import render_shape, render_views
+
+# From a pre-loaded OCC shape
+views = render_shape(
+    shape,
+    output_dir="./views",
+    image_size=(1200, 900),
+    stem="part",
+)  # → list[Path] — front, back, left, right, top, bottom, iso, ...
+
+# Convenience: load + render in one call
+views = render_views(
+    step_path="bracket.step",
+    output_dir="./views",
+    image_size=(1200, 900),
+)</code></pre>
+      </div>
+    </section>
+
+    <!-- Building an LLM tool -->
+    <section>
+      <span class="section-anchor" id="llm-tool"></span>
+      <h2>Building an LLM tool</h2>
+      <p>
+        The recommended pattern is to wrap cadvert's pipeline into a single function
+        that you register as a tool in your LLM framework. The tool receives a file path,
+        runs the full pipeline, and returns the structured text context.
+      </p>
+
+      <div class="code-block">
+        <div class="code-block-header">
+          <span>python — generic tool wrapper</span>
+          <button class="code-copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><code>from cadvert.ingest import load_step, IngestError
+from cadvert.topology import build_topology
+from cadvert.features import detect_features
+from cadvert.spatial import compute_spatial_relationships
+from cadvert.document import render_tier0
+from cadvert.renderer import render_shape
+
+def analyze_cad(file_path: str) -> dict:
+    """
+    Load a CAD file and return structured context for an LLM.
+    Supports .step, .stp, .iges, .igs, .brep, .stl, .obj
+    """
+    try:
+        shape, body_count, metadata = load_step(file_path)
+    except IngestError as e:
+        return {"error": str(e)}
+
+    result = {
+        "format": metadata.source_format,
+        "units": metadata.units,
+        "is_mesh": metadata.is_mesh,
+    }
+
+    if not metadata.is_mesh:
+        graph = build_topology(shape, body_count)
+        features = detect_features(graph)
+        spatial = compute_spatial_relationships(graph, features, shape=shape)
+
+        result["context"] = render_tier0(
+            graph, file_path,
+            features=features,
+            spatial=spatial,
+            units=metadata.units,
+            gdt_annotations=metadata.gdt_annotations,
+        )
+    else:
+        # Mesh files: global properties only
+        result["context"] = f"Mesh file: {metadata.triangle_count} triangles."
+
+    # Optional: render views and return image paths
+    # result["views"] = [str(p) for p in render_shape(shape, "./views")]
+
+    return result</code></pre>
+      </div>
+    </section>
+
+    <!-- Claude example -->
+    <section>
+      <span class="section-anchor" id="claude"></span>
+      <h2>Example: Claude tool use</h2>
+      <p>
+        Register <code>analyze_cad</code> as a tool in an Anthropic API call.
+        Claude will invoke it when the user references a CAD file,
+        then reason over the structured output.
+      </p>
+
+      <div class="callout note">
+        <strong>Your API key</strong>
+        Get a key from <strong>console.anthropic.com</strong>, then set it once in your terminal before running your script:<br><br>
+        <code style="background:none;padding:0">export ANTHROPIC_API_KEY="sk-ant-..."</code><br><br>
+        The <code>anthropic.Anthropic()</code> client reads it automatically. You can also pass it directly: <code>anthropic.Anthropic(api_key="sk-ant-...")</code>
+      </div>
+
+      <div class="code-block">
+        <div class="code-block-header">
+          <span>python</span>
+          <button class="code-copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><code>import anthropic
+import json
+
+client = anthropic.Anthropic()
+
+tools = [
+    {
+        "name": "analyze_cad",
+        "description": (
+            "Read a CAD file (.step, .iges, .brep, .stl, .obj) and return "
+            "structured geometry, detected features (holes, bosses, fillets, …), "
+            "spatial relationships, dimensions, and tolerances."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "Absolute path to the CAD file on disk"
+                }
+            },
+            "required": ["file_path"]
+        }
+    }
+]
+
+def run_agent(user_message: str):
+    messages = [{"role": "user", "content": user_message}]
+
+    while True:
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=4096,
+            tools=tools,
+            messages=messages,
+        )
+
+        # Append assistant turn
+        messages.append({"role": "assistant", "content": response.content})
+
+        if response.stop_reason == "tool_use":
+            tool_results = []
+            for block in response.content:
+                if block.type == "tool_use" and block.name == "analyze_cad":
+                    result = analyze_cad(block.input["file_path"])
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(result),
+                    })
+
+            messages.append({"role": "user", "content": tool_results})
+
+        else:
+            # Final text response
+            for block in response.content:
+                if hasattr(block, "text"):
+                    print(block.text)
+            break
+
+run_agent("Analyze bracket.step and tell me if it's suitable for CNC machining.")</code></pre>
+      </div>
+
+      <div class="callout tip">
+        <strong>Tip — vision models</strong>
+        Pass the PNG views from <code>render_shape()</code> alongside the text context
+        to a vision-capable model (Claude, GPT-4o) for even richer analysis.
+        The text covers numbers; the images cover spatial intuition.
+      </div>
+    </section>
+
+    <!-- CLI -->
+    <section>
+      <span class="section-anchor" id="cli"></span>
+      <h2>CLI reference</h2>
+      <p>cadvert also ships a command-line tool for one-off conversions:</p>
+
+      <div class="code-block">
+        <div class="code-block-header">
+          <span>bash</span>
+          <button class="code-copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><code># Convert any supported file to an HSD document
+cadvert part.step -o output.hsd.txt
+
+# Skip specific pipeline stages
+cadvert part.step --no-features --no-spatial --no-render --no-validate
+
+# Include full NURBS control-point data
+cadvert part.step --nurbs-detail
+
+# Set draft analysis direction
+cadvert part.step --pull-direction 0,0,-1
+
+# Override render resolution
+cadvert part.step --image-size 1600x1200
+
+# Start the REST API server (requires cadvert[server])
+cadvert-server
+# Listens on http://localhost:8000</code></pre>
+      </div>
+
+      <div class="callout note">
+        <strong>Large parts</strong>
+        Files with more than 100 faces automatically split output into
+        <code>part.hsd.txt</code> (summary) and <code>part.full_topology.txt</code>
+        (complete face/edge dump). Pass the summary to your LLM system prompt;
+        fetch the full topology on demand.
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  // ── Theme ──────────────────────────────────────────────────────────────────
+  function setTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    localStorage.setItem('cadvert_theme', t);
+    document.getElementById('pill-light').classList.toggle('active', t === 'light');
+    document.getElementById('pill-dark').classList.toggle('active', t === 'dark');
+  }
+
+  (function initTheme() {
+    const saved = localStorage.getItem('cadvert_theme');
+    const prefer = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    setTheme(saved || prefer);
+  })();
+
+  // ── Copy install command ───────────────────────────────────────────────────
+  function copyInstall() {
+    const text = document.getElementById('installCmd').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('installCopyBtn');
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+    });
+  }
+
+  // ── Copy code blocks ───────────────────────────────────────────────────────
+  function copyCode(btn) {
+    const pre = btn.closest('.code-block').querySelector('pre code');
+    navigator.clipboard.writeText(pre.textContent).then(() => {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+    });
+  }
+
+  // ── Active TOC link on scroll ──────────────────────────────────────────────
+  const tocLinks = document.querySelectorAll('.toc-list a');
+  const anchors  = Array.from(document.querySelectorAll('.section-anchor'));
+
+  function updateTOC() {
+    const scrollY = window.scrollY + 80;
+    let current = anchors[0]?.id;
+    for (const a of anchors) {
+      if (a.getBoundingClientRect().top + window.scrollY <= scrollY) current = a.id;
+    }
+    tocLinks.forEach(l => {
+      const href = l.getAttribute('href').slice(1);
+      l.classList.toggle('active', href === current);
+    });
+  }
+
+  window.addEventListener('scroll', updateTOC, { passive: true });
+  updateTOC();
+</script>
+</body>
+</html>
