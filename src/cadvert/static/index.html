@@ -1187,6 +1187,8 @@
     <div class="logo-text">CADVERT</div>
   </div>
 
+  <a href="/about" style="font-size:12px;font-weight:600;color:var(--text-muted);text-decoration:none;padding:4px 10px;border-radius:7px;border:1px solid var(--border);transition:color 150ms,background 150ms;" onmouseover="this.style.color='var(--text)';this.style.background='var(--surface-alt)'" onmouseout="this.style.color='var(--text-muted)';this.style.background='transparent'">About</a>
+
   <a href="/developers" style="font-size:12px;font-weight:600;color:var(--text-muted);text-decoration:none;padding:4px 10px;border-radius:7px;border:1px solid var(--border);transition:color 150ms,background 150ms;" onmouseover="this.style.color='var(--text)';this.style.background='var(--surface-alt)'" onmouseout="this.style.color='var(--text-muted)';this.style.background='transparent'">For Developers</a>
 
   <div class="theme-toggle">
@@ -1279,6 +1281,7 @@
           <div class="empty-icon">🔩</div>
           <div class="empty-title">Upload a CAD file to start</div>
           <div class="empty-sub">Then ask anything about the part — dimensions, features, manufacturability, tolerances.</div>
+          <a href="/about" style="display:inline-block;margin-top:14px;font-size:12px;font-weight:600;color:var(--text-muted);text-decoration:none;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text-muted)'">New here? See how it works &rarr;</a>
         </div>
       </div>
       <div class="input-bar">
@@ -2157,7 +2160,8 @@ function createEmptyState() {
   div.innerHTML = `
     <div class="empty-icon">🔩</div>
     <div class="empty-title">Upload a CAD file to start</div>
-    <div class="empty-sub">Then ask anything about the part — dimensions, features, manufacturability, tolerances.</div>`;
+    <div class="empty-sub">Then ask anything about the part — dimensions, features, manufacturability, tolerances.</div>
+    <a href="/about" style="display:inline-block;margin-top:14px;font-size:12px;font-weight:600;color:var(--text-muted);text-decoration:none;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text-muted)'">New here? See how it works &rarr;</a>`;
   return div;
 }
 

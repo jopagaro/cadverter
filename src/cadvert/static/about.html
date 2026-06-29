@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CADVERT — About</title>
+  <link rel="preconnect" href="https://fonts.cdnfonts.com">
+  <link href="https://fonts.cdnfonts.com/css/satoshi" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #FAFAF8;
+      --surface:     #FFFFFF;
+      --surface-alt: #F5F5F3;
+      --border:      #EBEBEA;
+      --accent:      #1A1A1A;
+      --accent-soft: rgba(26,26,26,0.08);
+      --text:        #1A1A1A;
+      --text-muted:  #888888;
+      --text-dim:    #999999;
+      --success:     #1B7A3D;
+      --logo-bg:     #1A1A1A;
+      --font:        'Satoshi', -apple-system, system-ui, sans-serif;
+      --mono:        'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+      --code-bg:     #F0F0EE;
+      --code-text:   #1A1A1A;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg:          #111116;
+        --surface:     #18181E;
+        --surface-alt: rgba(255,255,255,0.03);
+        --border:      #26262E;
+        --accent:      #5B6CFF;
+        --accent-soft: rgba(91,108,255,0.08);
+        --text:        #E0E0E4;
+        --text-muted:  #666666;
+        --text-dim:    #555555;
+        --success:     #2BB464;
+        --logo-bg:     #5B6CFF;
+        --code-bg:     #0D0D12;
+        --code-text:   #C8C8D0;
+      }
+    }
+
+    [data-theme="dark"] {
+      --bg:          #111116;
+      --surface:     #18181E;
+      --surface-alt: rgba(255,255,255,0.03);
+      --border:      #26262E;
+      --accent:      #5B6CFF;
+      --accent-soft: rgba(91,108,255,0.08);
+      --text:        #E0E0E4;
+      --text-muted:  #666666;
+      --text-dim:    #555555;
+      --success:     #2BB464;
+      --logo-bg:     #5B6CFF;
+      --code-bg:     #0D0D12;
+      --code-text:   #C8C8D0;
+    }
+
+    [data-theme="light"] {
+      --bg:          #FAFAF8;
+      --surface:     #FFFFFF;
+      --surface-alt: #F5F5F3;
+      --border:      #EBEBEA;
+      --accent:      #1A1A1A;
+      --accent-soft: rgba(26,26,26,0.08);
+      --text:        #1A1A1A;
+      --text-muted:  #888888;
+      --text-dim:    #999999;
+      --success:     #1B7A3D;
+      --logo-bg:     #1A1A1A;
+      --code-bg:     #F0F0EE;
+      --code-text:   #1A1A1A;
+    }
+
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.7;
+      transition: background 200ms, color 200ms;
+    }
+
+    /* ── Header ── */
+    header {
+      position: sticky; top: 0; z-index: 100;
+      height: 48px;
+      display: flex; align-items: center; gap: 12px;
+      padding: 0 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      transition: background 200ms, border-color 200ms;
+    }
+    .logo-wrap { display: flex; align-items: center; gap: 8px; text-decoration: none; flex-shrink: 0; }
+    .logo-mark {
+      width: 24px; height: 24px; border-radius: 7px;
+      background: var(--logo-bg); color: #fff;
+      font-size: 12px; font-weight: 800;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      transition: background 200ms;
+    }
+    .logo-text { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; color: var(--text); transition: color 200ms; }
+    .header-badge {
+      font-size: 10px; font-weight: 600;
+      padding: 2px 7px; border-radius: 5px;
+      background: var(--accent-soft); color: var(--accent);
+      letter-spacing: 0.3px; text-transform: uppercase;
+    }
+    .header-spacer { flex: 1; }
+    .nav-link {
+      font-size: 12px; font-weight: 600; color: var(--text-muted);
+      text-decoration: none; padding: 4px 10px; border-radius: 7px;
+      border: 1px solid var(--border);
+      transition: color 150ms, background 150ms;
+    }
+    .nav-link:hover { color: var(--text); background: var(--surface-alt); }
+    .theme-toggle {
+      display: flex; background: var(--surface-alt);
+      border: 1px solid var(--border); border-radius: 8px; padding: 2px; gap: 1px;
+    }
+    .theme-pill {
+      padding: 3px 10px; border-radius: 6px; border: none;
+      font-size: 11px; font-weight: 500; font-family: var(--font);
+      cursor: pointer; background: transparent; color: var(--text-muted);
+      transition: background 150ms, color 150ms, box-shadow 150ms; line-height: 1.6;
+    }
+    .theme-pill.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .btn-app {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 12px; border-radius: 8px;
+      background: var(--accent); color: #fff;
+      font-size: 12px; font-weight: 600; font-family: var(--font);
+      border: none; cursor: pointer; text-decoration: none;
+      transition: opacity 150ms; white-space: nowrap;
+    }
+    .btn-app:hover { opacity: 0.85; }
+
+    /* ── Layout ── */
+    .wrap { max-width: 760px; margin: 0 auto; padding: 0 24px 96px; }
+
+    /* ── Hero ── */
+    .hero { padding: 64px 0 48px; }
+    .hero-eyebrow {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.8px;
+      text-transform: uppercase; color: var(--accent); margin-bottom: 12px;
+    }
+    .hero h1 {
+      font-size: 34px; font-weight: 800; letter-spacing: -0.8px;
+      line-height: 1.15; color: var(--text); margin-bottom: 16px;
+    }
+    .hero .lede { font-size: 16px; color: var(--text-muted); line-height: 1.7; max-width: 620px; }
+
+    /* ── Sections ── */
+    section { margin-bottom: 48px; }
+    .section-anchor { display: block; height: 64px; margin-top: -64px; visibility: hidden; }
+    h2 {
+      font-size: 20px; font-weight: 700; letter-spacing: -0.4px; color: var(--text);
+      margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
+    }
+    h3 { font-size: 14px; font-weight: 700; color: var(--text); margin: 24px 0 8px; }
+    p { color: var(--text-muted); margin-bottom: 14px; }
+    p:last-child { margin-bottom: 0; }
+    p strong { color: var(--text); font-weight: 700; }
+    ul { margin: 8px 0 16px 20px; color: var(--text-muted); }
+    li { margin-bottom: 6px; }
+    li strong { color: var(--text); font-weight: 700; }
+    code {
+      font-family: var(--mono); font-size: 12px;
+      background: var(--code-bg); padding: 1px 5px; border-radius: 4px; color: var(--code-text);
+    }
+
+    /* ── Callout ── */
+    .callout {
+      margin: 16px 0; padding: 14px 16px;
+      background: var(--surface-alt); border: 1px solid var(--border);
+      border-radius: 8px; font-size: 13px; color: var(--text-muted);
+    }
+    .callout strong { color: var(--text); }
+
+    /* ── Use-case cards ── */
+    .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px;
+    }
+    .card-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .card-body { font-size: 12.5px; color: var(--text-muted); line-height: 1.6; }
+
+    /* ── Install strip ── */
+    .install-strip {
+      display: flex; align-items: center; gap: 0;
+      background: var(--code-bg); border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden; max-width: 420px; margin: 16px 0;
+    }
+    .install-strip code { flex: 1; padding: 10px 16px; font-family: var(--mono); font-size: 13px; color: var(--code-text); }
+    .copy-btn {
+      padding: 10px 14px; border: none; border-left: 1px solid var(--border);
+      background: transparent; color: var(--text-muted);
+      font-size: 11px; font-family: var(--font); font-weight: 600; cursor: pointer;
+      transition: color 150ms, background 150ms; white-space: nowrap;
+    }
+    .copy-btn:hover { color: var(--text); background: var(--surface-alt); }
+    .copy-btn.copied { color: var(--success); }
+
+    /* ── Output sample ── */
+    .sample {
+      background: var(--code-bg); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px; margin: 16px 0;
+      font-family: var(--mono); font-size: 12px; line-height: 1.7;
+      color: var(--code-text); overflow-x: auto; white-space: pre;
+    }
+
+    /* ── CTA ── */
+    .cta {
+      text-align: center; padding: 32px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    }
+    .cta h2 { border: none; padding: 0; margin-bottom: 8px; }
+    .cta p { margin-bottom: 20px; }
+    .cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+    /* ── Footer ── */
+    .site-footer {
+      border-top: 1px solid var(--border);
+      margin-top: 24px;
+    }
+    .footer-inner {
+      max-width: 760px; margin: 0 auto;
+      padding: 24px; display: flex; align-items: center; gap: 16px;
+      flex-wrap: wrap;
+    }
+    .footer-brand { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); }
+    .footer-brand .logo-mark { width: 18px; height: 18px; border-radius: 5px; font-size: 9px; }
+    .footer-spacer { flex: 1; }
+    .footer-links { display: flex; gap: 18px; }
+    .footer-links a {
+      font-size: 12px; font-weight: 600; color: var(--text-muted);
+      text-decoration: none; transition: color 150ms;
+    }
+    .footer-links a:hover { color: var(--text); }
+
+    @media (max-width: 640px) {
+      .hero h1 { font-size: 26px; }
+      .cards { grid-template-columns: 1fr; }
+      .wrap { padding: 0 16px 64px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <a class="logo-wrap" href="/">
+    <div class="logo-mark">C</div>
+    <div class="logo-text">CADVERT</div>
+  </a>
+  <span class="header-badge">About</span>
+
+  <div class="header-spacer"></div>
+
+  <a class="nav-link" href="/developers">For Developers</a>
+
+  <div class="theme-toggle">
+    <button class="theme-pill" id="pill-light" onclick="setTheme('light')">Light</button>
+    <button class="theme-pill" id="pill-dark" onclick="setTheme('dark')">Dark</button>
+  </div>
+
+  <a class="btn-app" href="/">Open App &rarr;</a>
+</header>
+
+<div class="wrap">
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-eyebrow">cadvert · the missing layer between CAD and AI</div>
+    <h1>CADVERT turns CAD files into something an AI can actually read.</h1>
+    <p class="lede">
+      Upload a part, ask anything about it — dimensions, features, manufacturability,
+      tolerances — and get answers from the exact geometry the engineer authored,
+      not a guess from a blurry render.
+    </p>
+  </div>
+
+  <!-- About -->
+  <section>
+    <span class="section-anchor" id="about"></span>
+    <h2>What is CADVERT?</h2>
+    <p>
+      A STEP or IGES file is built for engineering software, not for language models.
+      Upload one to an AI assistant and it chokes — the file is a dense graph of surface
+      equations and topology, not a document. Show it a screenshot instead and the model
+      can see the shape, but it can't tell you the part is exactly 8.000&nbsp;mm thick or
+      that two holes sit 30.000&nbsp;mm apart. In engineering, the number is the whole point.
+    </p>
+    <p>
+      CADVERT bridges that gap. It reads the CAD file directly, extracts the exact geometry —
+      dimensions, holes, fillets, wall thicknesses, tolerances — and writes it out as clean,
+      structured text any LLM can reason over.
+    </p>
+    <p>
+      The key word is <strong>exact</strong>. CADVERT doesn't approximate the part into a mesh
+      of triangles the way most tools do. It reads the true analytical geometry straight from
+      the source, so every dimension it reports is the value that was actually in the file —
+      not a measurement, not an estimate.
+    </p>
+
+    <div class="callout">
+      Instead of <strong>"a bracket with some holes,"</strong> your model gets this:
+      <div class="sample">THROUGH HOLE  d=8.000mm  depth=20.000mm  [5/16"]
+PATTERN       2× through hole  d=8.000mm
+Wall thickness:  bore → outer surface  = 11.000 mm
+Hole-to-hole center distance           = 30.000 mm</div>
+      It recognized the through holes, matched the diameter to a standard 5/16" drill,
+      spotted the pattern, and computed the exact wall thickness — the dimensions a
+      machinist or a DFM reviewer actually signs off on.
+    </div>
+  </section>
+
+  <!-- How to use -->
+  <section>
+    <span class="section-anchor" id="how-to-use"></span>
+    <h2>How to use it</h2>
+    <p>Two ways to use CADVERT, depending on who you are.</p>
+
+    <h3>If you just want answers about a part</h3>
+    <p>
+      Upload your file — STEP, IGES, BREP, STL, or OBJ — and ask. <em>"How thick is this wall?"</em>
+      <em>"What size tap do these holes need?"</em> <em>"Is this part suitable for CNC machining?"</em>
+      CADVERT reads the exact geometry and the AI answers from real numbers, not guesses.
+    </p>
+
+    <h3>If you're a developer building your own tool</h3>
+    <div class="install-strip">
+      <code id="installCmd">pip install cadvert</code>
+      <button class="copy-btn" id="installCopyBtn" onclick="copyInstall()">Copy</button>
+    </div>
+    <p>Three lines take a CAD file to AI-ready context you can drop into any model. Use it to build:</p>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-title">An AI copilot for CAD</div>
+        <div class="card-body">Register CADVERT as a tool in a Claude or GPT agent — it answers questions about real parts using real dimensions.</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Manufacturability checks</div>
+        <div class="card-body">Run it in CI to flag thin walls, holes too close to an edge, or undercuts — before a human opens the file.</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Instant quoting</div>
+        <div class="card-body">A customer emails a STEP file; your system reads the features and drafts a quote automatically.</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Design search &amp; BOMs</div>
+        <div class="card-body">Extract a structured feature and dimension list from any part for search, tagging, or a bill of materials.</div>
+      </div>
+    </div>
+
+    <p>
+      Whatever you build, the geometry underneath is exact. CADVERT does the translation;
+      your model does the reasoning. Full API reference and code examples are on the
+      <a href="/developers" style="color:var(--accent);text-decoration:none;font-weight:600">developer docs</a>.
+    </p>
+  </section>
+
+  <!-- CTA -->
+  <div class="cta">
+    <h2>Give it a part.</h2>
+    <p>Upload a CAD file and start asking questions — or install the library and build on it.</p>
+    <div class="cta-row">
+      <a class="btn-app" href="/">Open App &rarr;</a>
+      <a class="nav-link" href="/developers" style="padding:5px 14px">Read the docs</a>
+    </div>
+  </div>
+
+</div>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <div class="logo-mark">C</div>
+      <span>CADVERT — exact CAD geometry for AI</span>
+    </div>
+    <div class="footer-spacer"></div>
+    <div class="footer-links">
+      <a href="/">App</a>
+      <a href="/about">About</a>
+      <a href="/developers">Developers</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  function setTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    localStorage.setItem('cadvert_theme', t);
+    document.getElementById('pill-light').classList.toggle('active', t === 'light');
+    document.getElementById('pill-dark').classList.toggle('active', t === 'dark');
+  }
+  (function initTheme() {
+    const saved = localStorage.getItem('cadvert_theme');
+    const prefer = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    setTheme(saved || prefer);
+  })();
+
+  function copyInstall() {
+    const text = document.getElementById('installCmd').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('installCopyBtn');
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+    });
+  }
+</script>
+</body>
+</html>
