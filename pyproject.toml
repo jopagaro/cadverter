@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cadvert"
-version = "0.1.0"
+version = "0.2.0"
 description = "Convert CAD files into LLM-readable Hierarchical Spatial Documents"
 requires-python = ">=3.10"
 
@@ -30,9 +30,13 @@ llm = [
 mesh = [
     "trimesh",
 ]
+# networkx face-adjacency graph export (result.to_graph() for GNNs)
+graph = [
+    "networkx",
+]
 # Full desktop / server install — everything
 full = [
-    "cadvert[server,llm,mesh]",
+    "cadvert[server,llm,mesh,graph]",
 ]
 # Development
 dev = [
