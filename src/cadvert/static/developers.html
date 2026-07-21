@@ -642,27 +642,35 @@ pip install cadvert[full]</code></pre>
     <section>
       <span class="section-anchor" id="quickstart"></span>
       <h2>Quick start</h2>
-      <p>Three lines to go from a CAD file to LLM-ready context:</p>
+      <p>One call takes a CAD file to LLM-ready context — and every other representation:</p>
 
       <div class="code-block">
         <div class="code-block-header">
           <span>python</span>
           <button class="code-copy-btn" onclick="copyCode(this)">Copy</button>
         </div>
-        <pre><code>from cadvert.ingest import load_step
-from cadvert.topology import build_topology
-from cadvert.features import detect_features
-from cadvert.document import render_tier0
+        <pre><code>import cadvert
 
-shape, body_count, metadata = load_step("bracket.step")
-graph = build_topology(shape, body_count)
-features = detect_features(graph)
+result = cadvert.analyze("bracket.step")
 
-context = render_tier0(graph, "bracket.step", features=features, units=metadata.units)
-print(context)  # → structured text ready to pass to any LLM</code></pre>
+print(result.to_text())     # LLM-ready structured document (the flagship)
+result.to_dict()            # JSON-safe analysis for quoting / CI / databases
+result.to_json()
+result.to_graph()           # networkx face-adjacency graph  (GNN / UV-Net)
+result.to_points(2048)      # (N,3) surface point cloud       (PointNet / 3D-CNN)</code></pre>
       </div>
 
-      <p><code>render_tier0</code> returns a compact document (~5–15 KB) containing the part's global properties, surface geometry, detected manufacturing features, and spatial relationships — everything an LLM needs to answer questions about the file.</p>
+      <p><code>analyze()</code> runs the full pipeline (ingest → topology → features → spatial) and returns a <code>CadvertResult</code> that exposes every representation from one object. <code>to_text()</code> is a compact document (~5–15 KB) with the part's global properties, geometry, detected features, and spatial relationships — everything an LLM needs to reason about the file.</p>
+
+      <div class="callout tip">
+        <strong>Prefer the pipeline?</strong>
+        The five stages remain importable individually (<code>cadvert.ingest</code>,
+        <code>cadvert.topology</code>, <code>cadvert.features</code>, <code>cadvert.spatial</code>,
+        <code>cadvert.document</code>) — see the API reference below. <code>analyze()</code>
+        just wires them together for the common case.
+      </div>
+
+      <p><code>analyze()</code> also handles <code>.dxf</code> 2D drawings, returning a <code>DxfResult</code> with the same <code>to_text()</code> / <code>to_dict()</code> interface — entities, layers, dimensions, and title-block text.</p>
     </section>
 
     <!-- Pipeline -->
