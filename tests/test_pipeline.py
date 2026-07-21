@@ -126,6 +126,23 @@ def test_to_json_roundtrips(result):
     assert isinstance(parsed["global"]["center_of_mass"], list)
 
 
+# ── Point-cloud representation ────────────────────────────────────────────────
+
+def test_to_points(result):
+    pts = result.to_points(1024, seed=0)
+    assert pts.shape == (1024, 3)
+    # sampled points lie within the part's bounding box
+    lo, hi = pts.min(axis=0), pts.max(axis=0)
+    assert lo[0] >= -1e-6 and hi[0] <= 60.0 + 1e-6
+    assert lo[1] >= -1e-6 and hi[1] <= 40.0 + 1e-6
+    assert lo[2] >= -1e-6 and hi[2] <= 20.0 + 1e-6
+
+
+def test_to_points_deterministic(result):
+    import numpy as np
+    assert np.allclose(result.to_points(512, seed=7), result.to_points(512, seed=7))
+
+
 # ── Graph representation ──────────────────────────────────────────────────────
 
 def test_to_graph():

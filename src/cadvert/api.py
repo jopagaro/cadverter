@@ -225,6 +225,18 @@ class CadvertResult:
                 )
         return g
 
+    # ── Point-cloud representation (for PointNet / 3D CNNs) ────────────────────
+    def to_points(self, count: int = 2048, *, deflection: float = 0.1, seed: int = 0):
+        """Sample ``count`` surface points as an (N, 3) numpy array.
+
+        Works for both B-REP and mesh inputs (B-REP is tessellated on demand).
+        Area-weighted via trimesh when installed; otherwise falls back to
+        tessellation vertices. Install ``cadvert[mesh]`` for proper sampling.
+        """
+        from .mesh import sample_points
+
+        return sample_points(self.shape, count, deflection=deflection, seed=seed)
+
     # ── Rendering passthrough ─────────────────────────────────────────────────
     def render(self, output_dir: str | Path, image_size=(1200, 900)) -> list[Path]:
         """Render orthographic + isometric PNG views. Requires cadvert[server]."""
@@ -246,10 +258,11 @@ def analyze(
 ) -> CadvertResult:
     """Load a CAD file and run the full analysis pipeline in one call.
 
-    Supports ``.step .stp .iges .igs .brep`` (full B-REP analysis) and
-    ``.stl .obj`` (global properties only). Returns a :class:`CadvertResult`
-    exposing every representation — ``.to_text()``, ``.to_dict()``,
-    ``.to_json()``, ``.to_graph()``.
+    Supports ``.step .stp .iges .igs .brep`` (full B-REP analysis),
+    ``.stl .obj`` (global properties only), and ``.dxf`` (2D drawing —
+    returns a :class:`~cadvert.dxf.DxfResult`). For 3D inputs, returns a
+    :class:`CadvertResult` exposing every representation — ``.to_text()``,
+    ``.to_dict()``, ``.to_json()``, ``.to_graph()``, ``.to_points()``.
 
     Args:
         path: CAD file to analyze.
@@ -261,6 +274,12 @@ def analyze(
         IngestError: unsupported format or parse failure.
     """
     src = Path(path)
+
+    # DXF is 2D — it has its own light pipeline and result type.
+    if src.suffix.lower() == ".dxf":
+        from .dxf import load_dxf
+        return load_dxf(src)
+
     shape, body_count, metadata = load_step(src)
 
     result = CadvertResult(
