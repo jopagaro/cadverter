@@ -61,7 +61,7 @@ Bbox: X[0,60]  Y[0,40]  Z[0,20]
 |--------|--------|-----|
 | `.to_text()` | Structured text | Prompting an LLM (Claude, GPT) |
 | `.to_dict()` / `.to_json()` | JSON | Quoting engines, CI checks, databases |
-| `.to_graph()` | `networkx` graph | Graph neural networks |
+| `.to_graph()` | `networkx` graph (lossless) | Graph neural networks |
 | `.to_points(n)` | `(N,3)` array | PointNet, 3D CNNs |
 
 ## Optional extras

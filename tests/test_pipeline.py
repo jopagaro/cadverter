@@ -26,7 +26,7 @@ def result():
 # ── Package surface ───────────────────────────────────────────────────────────
 
 def test_version():
-    assert cadvert.__version__ == "0.2.0"
+    assert cadvert.__version__ == "0.3.0"
 
 
 def test_top_level_exports():
@@ -145,15 +145,39 @@ def test_to_points_deterministic(result):
 
 # ── Graph representation ──────────────────────────────────────────────────────
 
-def test_to_graph():
+def test_to_graph_is_lossless(result):
     nx = pytest.importorskip("networkx")
-    g = analyze(SAMPLE).to_graph()
-    assert isinstance(g, nx.Graph)
-    assert g.number_of_nodes() == 8      # faces
-    assert g.number_of_edges() == 18     # shared B-REP edges
+    g = result.to_graph()                       # default: lossless MultiGraph
+    assert isinstance(g, nx.MultiGraph)
+    assert g.number_of_nodes() == 8             # faces
+    # every B-REP edge is preserved — graph edge count == topology edge count
+    assert g.number_of_edges() == len(result.graph.edges) == 18
     # nodes carry surface type + area
     for _, attrs in g.nodes(data=True):
         assert "type" in attrs and "area" in attrs
     # edges carry convexity + dihedral angle
     for _, _, attrs in g.edges(data=True):
         assert "convexity" in attrs
+
+
+def test_to_graph_seams_are_tagged_self_loops(result):
+    nx = pytest.importorskip("networkx")
+    g = result.to_graph()
+    # the two cylindrical holes each contribute one seam self-loop
+    assert nx.number_of_selfloops(g) == 2
+    for u, v, attrs in g.edges(data=True):
+        if u == v:
+            assert attrs.get("seam") is True
+
+
+def test_to_graph_simple_has_no_self_loops(result):
+    nx = pytest.importorskip("networkx")
+    g = result.to_graph(simple=True)
+    assert isinstance(g, nx.Graph) and not isinstance(g, nx.MultiGraph)
+    assert nx.number_of_selfloops(g) == 0       # clean binary adjacency
+
+
+def test_to_graph_exclude_seams(result):
+    nx = pytest.importorskip("networkx")
+    g = result.to_graph(include_seams=False)
+    assert nx.number_of_selfloops(g) == 0

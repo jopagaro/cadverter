@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cadvert"
-version = "0.2.0"
+version = "0.3.0"
 description = "Convert CAD files into LLM-readable Hierarchical Spatial Documents"
 readme = "README.md"
 requires-python = ">=3.10"

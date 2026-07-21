@@ -185,13 +185,31 @@ class CadvertResult:
         return json.dumps(self.to_dict(), indent=indent)
 
     # ── Graph representation (occwl-style, for GNNs) ──────────────────────────
-    def to_graph(self):
-        """Face-adjacency graph as a ``networkx.Graph``.
+    def to_graph(self, *, simple: bool = False, include_seams: bool = True):
+        """Face-adjacency graph as a networkx graph — a lossless topology map.
 
-        Nodes are faces (attrs: type, area, geometry); an edge connects two
-        faces that share a B-REP edge (attrs: edge id, curve type, dihedral
-        angle, convexity). This is the representation UV-Net / GNN pipelines
-        consume. Requires the ``graph`` extra: ``pip install cadvert[graph]``.
+        Nodes are faces (attrs: ``type``, ``area``, ``geometry``). Edges connect
+        faces that share a B-REP edge (attrs: ``edge_id``, ``curve_type``,
+        ``dihedral_angle``, ``convexity``, plus ``seam`` / ``nonmanifold`` flags
+        where relevant).
+
+        By default returns a ``networkx.MultiGraph`` that preserves **every**
+        B-REP edge, so the graph's edge count matches the part's topology
+        exactly — nothing merged, nothing dropped:
+
+        * Two faces sharing several edges get one graph edge **per** shared edge
+          (a plain ``Graph`` would collapse them to one, losing connectivity).
+        * A closed face meeting itself (a cylinder/cone/sphere/torus **seam**)
+          is kept as a self-loop tagged ``seam=True`` — set
+          ``include_seams=False`` to omit these.
+        * A non-manifold edge shared by >2 faces links every pair of those
+          faces, each tagged ``nonmanifold=True``.
+
+        Pass ``simple=True`` for a plain ``networkx.Graph`` instead: at most one
+        edge per face pair and no self-loops — binary "are these two faces
+        adjacent" adjacency, the common GNN input.
+
+        Requires the ``graph`` extra: ``pip install cadvert[graph]``.
         """
         if self.metadata.is_mesh or self.graph is None:
             raise ValueError(
@@ -205,7 +223,7 @@ class CadvertResult:
                 "to_graph() needs networkx. Install with: pip install cadvert[graph]"
             ) from exc
 
-        g = nx.Graph()
+        g = nx.Graph() if simple else nx.MultiGraph()
         for f in self.graph.faces:
             g.add_node(
                 f.id,
@@ -213,16 +231,42 @@ class CadvertResult:
                 area=f.area,
                 geometry=f.geometry,
             )
+
         for e in self.graph.edges:
-            if len(e.face_ids) == 2:
-                a, b = e.face_ids
-                g.add_edge(
-                    a, b,
-                    edge_id=e.id,
-                    curve_type=e.geometry.get("type", "UNKNOWN"),
-                    dihedral_angle=e.dihedral_angle,
-                    convexity=e.convexity,
-                )
+            fids = e.face_ids
+            if not fids:
+                continue
+
+            attrs = {
+                "edge_id": e.id,
+                "curve_type": e.geometry.get("type", "UNKNOWN"),
+                "dihedral_angle": e.dihedral_angle,
+                "convexity": e.convexity,
+            }
+
+            # Resolve the face pair(s) this edge implies.
+            if len(fids) == 1:                      # boundary edge on one face
+                pairs = [(fids[0], fids[0])]
+                attrs["seam"] = True
+            elif len(fids) == 2:                    # manifold edge (or a seam)
+                a, b = fids
+                pairs = [(a, b)]
+                if a == b:
+                    attrs["seam"] = True
+            else:                                   # non-manifold: link all pairs
+                attrs["nonmanifold"] = True
+                pairs = [
+                    (fids[i], fids[j])
+                    for i in range(len(fids))
+                    for j in range(i + 1, len(fids))
+                ]
+
+            for a, b in pairs:
+                if a == b:                          # self-loop (seam / boundary)
+                    if simple or not include_seams:
+                        continue
+                g.add_edge(a, b, **attrs)
+
         return g
 
     # ── Point-cloud representation (for PointNet / 3D CNNs) ────────────────────
