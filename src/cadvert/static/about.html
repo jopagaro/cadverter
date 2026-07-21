@@ -176,22 +176,19 @@
       background: var(--code-bg); padding: 1px 5px; border-radius: 4px; color: var(--code-text);
     }
 
-    /* ── Callout ── */
-    .callout {
-      margin: 16px 0; padding: 14px 16px;
-      background: var(--surface-alt); border: 1px solid var(--border);
-      border-radius: 8px; font-size: 13px; color: var(--text-muted);
-    }
-    .callout strong { color: var(--text); }
+    .lead-in { margin-bottom: 8px; }
+    .after { margin-top: 12px; }
 
-    /* ── Use-case cards ── */
-    .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
-    .card {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 10px; padding: 16px;
+    /* ── Use-case table ── */
+    .use-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+    .use-table th {
+      text-align: left; padding: 8px 12px; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-dim);
+      border-bottom: 1px solid var(--border);
     }
-    .card-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
-    .card-body { font-size: 12.5px; color: var(--text-muted); line-height: 1.6; }
+    .use-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--text-muted); vertical-align: top; }
+    .use-table tr:last-child td { border-bottom: none; }
+    .use-table td.what { color: var(--text); font-weight: 700; white-space: nowrap; }
 
     /* ── Install strip ── */
     .install-strip {
@@ -217,14 +214,9 @@
       color: var(--code-text); overflow-x: auto; white-space: pre;
     }
 
-    /* ── CTA ── */
-    .cta {
-      text-align: center; padding: 32px;
-      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
-    }
-    .cta h2 { border: none; padding: 0; margin-bottom: 8px; }
-    .cta p { margin-bottom: 20px; }
-    .cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    /* ── Closing ── */
+    .closing { margin-top: 8px; }
+    .closing-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
 
     /* ── Footer ── */
     .site-footer {
@@ -248,7 +240,7 @@
 
     @media (max-width: 640px) {
       .hero h1 { font-size: 26px; }
-      .cards { grid-template-columns: 1fr; }
+      .use-table td.what { white-space: normal; }
       .wrap { padding: 0 16px 64px; }
     }
   </style>
@@ -310,16 +302,16 @@
       not a measurement, not an estimate.
     </p>
 
-    <div class="callout">
-      Instead of <strong>"a bracket with some holes,"</strong> your model gets this:
-      <div class="sample">THROUGH HOLE  d=8.000mm  depth=20.000mm  [5/16"]
+    <p class="lead-in">Instead of <em>"a bracket with some holes,"</em> your model gets this:</p>
+    <div class="sample">THROUGH HOLE  d=8.000mm  depth=20.000mm  [5/16"]
 PATTERN       2× through hole  d=8.000mm
 Wall thickness:  bore → outer surface  = 11.000 mm
 Hole-to-hole center distance           = 30.000 mm</div>
+    <p class="after">
       It recognized the through holes, matched the diameter to a standard 5/16" drill,
       spotted the pattern, and computed the exact wall thickness — the dimensions a
       machinist or a DFM reviewer actually signs off on.
-    </div>
+    </p>
   </section>
 
   <!-- How to use -->
@@ -340,26 +332,28 @@ Hole-to-hole center distance           = 30.000 mm</div>
       <code id="installCmd">pip install cadvert</code>
       <button class="copy-btn" id="installCopyBtn" onclick="copyInstall()">Copy</button>
     </div>
-    <p>Three lines take a CAD file to AI-ready context you can drop into any model. Use it to build:</p>
+    <p>One call takes a CAD file to AI-ready context you can drop into any model. Some of what people build:</p>
 
-    <div class="cards">
-      <div class="card">
-        <div class="card-title">An AI copilot for CAD</div>
-        <div class="card-body">Register CADVERT as a tool in a Claude or GPT agent — it answers questions about real parts using real dimensions.</div>
-      </div>
-      <div class="card">
-        <div class="card-title">Manufacturability checks</div>
-        <div class="card-body">Run it in CI to flag thin walls, holes too close to an edge, or undercuts — before a human opens the file.</div>
-      </div>
-      <div class="card">
-        <div class="card-title">Instant quoting</div>
-        <div class="card-body">A customer emails a STEP file; your system reads the features and drafts a quote automatically.</div>
-      </div>
-      <div class="card">
-        <div class="card-title">Design search &amp; BOMs</div>
-        <div class="card-body">Extract a structured feature and dimension list from any part for search, tagging, or a bill of materials.</div>
-      </div>
-    </div>
+    <table class="use-table">
+      <tbody>
+        <tr>
+          <td class="what">AI copilot for CAD</td>
+          <td>Register CADVERT as a tool in a Claude or GPT agent — it answers questions about real parts using real dimensions.</td>
+        </tr>
+        <tr>
+          <td class="what">Manufacturability checks</td>
+          <td>Run it in CI to flag thin walls, holes too close to an edge, or undercuts — before a human opens the file.</td>
+        </tr>
+        <tr>
+          <td class="what">Instant quoting</td>
+          <td>A customer emails a STEP file; your system reads the features and drafts a quote automatically.</td>
+        </tr>
+        <tr>
+          <td class="what">Design search &amp; BOMs</td>
+          <td>Extract a structured feature and dimension list from any part for search, tagging, or a bill of materials.</td>
+        </tr>
+      </tbody>
+    </table>
 
     <p>
       Whatever you build, the geometry underneath is exact. CADVERT does the translation;
@@ -368,15 +362,14 @@ Hole-to-hole center distance           = 30.000 mm</div>
     </p>
   </section>
 
-  <!-- CTA -->
-  <div class="cta">
-    <h2>Give it a part.</h2>
-    <p>Upload a CAD file and start asking questions — or install the library and build on it.</p>
-    <div class="cta-row">
+  <!-- Closing -->
+  <section class="closing">
+    <p>Give it a part — upload a CAD file and start asking questions, or install the library and build on it.</p>
+    <div class="closing-row">
       <a class="btn-app" href="/">Open App &rarr;</a>
       <a class="nav-link" href="/developers" style="padding:5px 14px">Read the docs</a>
     </div>
-  </div>
+  </section>
 
 </div>
 
