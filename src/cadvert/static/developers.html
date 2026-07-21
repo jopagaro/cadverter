@@ -677,39 +677,7 @@ result.to_points(2048)      # (N,3) surface point cloud       (PointNet / 3D-CNN
     <section>
       <span class="section-anchor" id="pipeline"></span>
       <h2>How it works</h2>
-      <p>cadvert runs a five-stage pipeline under the hood. Each stage returns plain Python dataclasses — no OCC objects leak out.</p>
-
-      <div class="pipeline">
-        <div class="pipe-step">
-          <div class="pipe-step-icon">📂</div>
-          <div class="pipe-step-label">load_step</div>
-          <div class="pipe-step-sub">ingest.py</div>
-        </div>
-        <div class="pipe-arrow">→</div>
-        <div class="pipe-step">
-          <div class="pipe-step-icon">🗺</div>
-          <div class="pipe-step-label">build_topology</div>
-          <div class="pipe-step-sub">topology.py</div>
-        </div>
-        <div class="pipe-arrow">→</div>
-        <div class="pipe-step">
-          <div class="pipe-step-icon">🔩</div>
-          <div class="pipe-step-label">detect_features</div>
-          <div class="pipe-step-sub">features.py</div>
-        </div>
-        <div class="pipe-arrow">→</div>
-        <div class="pipe-step">
-          <div class="pipe-step-icon">📐</div>
-          <div class="pipe-step-label">compute_spatial</div>
-          <div class="pipe-step-sub">spatial.py</div>
-        </div>
-        <div class="pipe-arrow">→</div>
-        <div class="pipe-step">
-          <div class="pipe-step-icon">📄</div>
-          <div class="pipe-step-label">render_tier0</div>
-          <div class="pipe-step-sub">document.py</div>
-        </div>
-      </div>
+      <p>Under the hood, <code>analyze()</code> runs five stages — <code>load_step → build_topology → detect_features → compute_spatial → render_tier0</code> — each returning plain Python dataclasses, with no OCC objects leaking past the ingest boundary. Every stage is importable on its own (see the API reference below).</p>
 
       <h3>What's in the output document?</h3>
       <table class="format-table">
