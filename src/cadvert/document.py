@@ -20,6 +20,7 @@ and its path reported in the summary header.
 
 from __future__ import annotations
 import math
+import re
 from pathlib import Path
 
 from .topology import TopologyGraph, FaceInfo, EdgeInfo
@@ -44,6 +45,7 @@ def render_document(
     units: str = "mm",
     gdt_annotations: list[GDTAnnotation] | None = None,
     mesh_info: dict | None = None,
+    metadata=None,
 ) -> str:
     """Render the HSD document (sections 1–5).
 
@@ -91,6 +93,8 @@ def render_document(
         lines.append("")
         lines.extend(validation_report.splitlines())
     lines.append("")
+    # Full document lists every component; the Tier-0 summary caps the list.
+    lines.extend(_render_components(metadata, limit=400))
 
     # ── Section 1: Global Properties ─────────────────────────────────────────
     lines += _section_header("GLOBAL PROPERTIES")
@@ -628,6 +632,56 @@ def assign_feature_ids(features: list) -> list[str]:
     return ids
 
 
+def _render_components(metadata, *, limit: int) -> list[str]:
+    """Assembly components as named in the CAD file.
+
+    For an assembly this is the strongest signal about *what the thing is*: catalog parts
+    arrive as real order codes (``Belt S5M-300``, ``DIN 625 T1 - 6205``, ``ISO 4762 - M8 x 20``)
+    which describe function in a way raw geometry cannot. Catalog parts are listed first
+    because they carry the most meaning per line, and the list is capped to protect the
+    prompt budget on large assemblies.
+    """
+    if metadata is None:
+        return []
+    components = list(getattr(metadata, "components", None) or [])
+    project = (getattr(metadata, "project", "") or "").strip()
+    system = (getattr(metadata, "originating_system", "") or "").strip()
+    if not components and not project and not system:
+        return []
+
+    out: list[str] = []
+    if project:
+        out.append(f"DESIGN: {project}")
+    if system:
+        out.append(f"AUTHORED IN: {system}")
+
+    if components:
+        # A component naming a recognised standard or a vendor order code says more than
+        # an internal drawing number, so surface those first.
+        standard = re.compile(
+            r"\b(ISO|DIN|ANSI|JIS|GB|BS|EN|SKF|NSK|THK|MISUMI|SMC|FESTO|BOSCH)\b|"
+            r"\b(bearing|belt|pulley|screw|bolt|nut|washer|ring|shaft|bushing|"
+            r"cylinder|motor|gear|spring|seal|coupling|sensor|valve)\b",
+            re.IGNORECASE,
+        )
+        catalog = [c for c in components if standard.search(c)]
+        rest = [c for c in components if not standard.search(c)]
+        ordered = catalog + rest
+
+        shown = ordered[:limit]
+        hidden = len(ordered) - len(shown)
+        head = f"COMPONENTS — {len(components)} named in the file"
+        if hidden > 0:
+            head += f" (showing {len(shown)})"
+        out.append(head)
+        for c in shown:
+            out.append(f"  {c}")
+        if hidden > 0:
+            out.append(f"  … and {hidden} more")
+    out.append("")
+    return out
+
+
 def render_tier0(
     graph,
     source_path,
@@ -638,6 +692,7 @@ def render_tier0(
     gdt_annotations: list | None = None,
     mesh_info: dict | None = None,
     validation_report: str | None = None,
+    metadata=None,
 ) -> str:
     """Compact executive summary for the LLM system prompt.
 
@@ -659,6 +714,7 @@ def render_tier0(
     else:
         lines.append("PRECISION: exact B-REP analytical geometry")
     lines.append("")
+    lines.extend(_render_components(metadata, limit=40))
 
     # ── Global properties ─────────────────────────────────────────────────────
     lines.append("[GLOBAL PROPERTIES]")

@@ -77,6 +77,7 @@ class CadvertResult:
             units=self.metadata.units,
             gdt_annotations=self.metadata.gdt_annotations or None,
             mesh_info=self._mesh_info,
+            metadata=self.metadata,
         )
 
     def to_full_text(self, rendered_views=None, validation_report=None) -> str:
@@ -93,6 +94,7 @@ class CadvertResult:
             units=self.metadata.units,
             gdt_annotations=self.metadata.gdt_annotations or None,
             mesh_info=self._mesh_info,
+            metadata=self.metadata,
         )
 
     # ── Structured dict / JSON (programmatic consumers) ───────────────────────
@@ -106,6 +108,11 @@ class CadvertResult:
             "is_mesh": self.metadata.is_mesh,
             "schema": self.metadata.schema or None,
             "originating_system": self.metadata.originating_system or None,
+            # Assembly component names as written in the CAD file (STEP PRODUCT entities).
+            # Catalog parts arrive as real order codes, which is what makes a BOM or a
+            # quoting engine possible without a human opening the model.
+            "components": list(self.metadata.components or []),
+            "project": self.metadata.project or None,
         }
 
         if self.metadata.is_mesh:

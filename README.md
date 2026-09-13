@@ -31,6 +31,19 @@ result.to_graph()           # networkx face-adjacency graph  (GNN / UV-Net)
 result.to_points(2048)      # (N,3) surface point cloud       (PointNet / 3D-CNN)
 ```
 
+For an assembly, CADVERT also reports what the file says the parts *are* — catalog
+components arrive as real order codes, which describe function in a way geometry alone
+cannot:
+
+```
+DESIGN: Cylindrical face chamfering machine
+AUTHORED IN: Autodesk Inventor 2021
+COMPONENTS — 51 named in the file
+  DIN 625 T1 - 6205 - 25 x 52 x 15
+  Belt S5M-300
+  ISO 4762 - M8 x 20
+```
+
 Example `to_text()` output:
 
 ```

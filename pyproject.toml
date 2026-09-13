@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cadvert"
-version = "0.3.0"
+version = "0.3.1"
 description = "Convert CAD files into LLM-readable Hierarchical Spatial Documents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,7 +12,10 @@ requires-python = ">=3.10"
 # Library core — geometry analysis + HSD output only.
 # No server, no UI, no LLM calls.
 dependencies = [
-    "cadquery-ocp",
+    # OpenCASCADE 8 (cadquery-ocp 8.x) relocated the classes topology.py imports, e.g.
+    # OCP.TopTools.TopTools_IndexedMapOfShape, so analyze() fails on import there.
+    # Keep to the 7.x line until the ingest/topology layer is ported.
+    "cadquery-ocp>=7.7,<8",
     "numpy",
 ]
 
@@ -56,6 +59,25 @@ cadvert-server = "cadvert.server:run"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cadvert"]
+
+# The source distribution ships the Python project only. Without an explicit list the
+# sdist swept in the Mac app's bundled interpreters from "APPLE OS APP/Engine" — ~18,000
+# files and over 500 MB, well past PyPI's limit.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src/cadvert",
+    "/tests",
+    "/samples",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/DESIGN.md",
+    "/pyproject.toml",
+]
+exclude = [
+    "**/__pycache__",
+    "**/*.pyc",
+    "/samples/**/*_views",
+]
 
 [tool.pytest.ini_options]
 # Only the repo's own tests — the Apple app folder may contain a bundled Python engine

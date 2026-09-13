@@ -1564,6 +1564,7 @@ def _run_pipeline(input_path: Path, session_dir: Path) -> dict:
         gdt_annotations=metadata.gdt_annotations or None,
         mesh_info=mesh_info,
         validation_report=validation_text,
+        metadata=metadata,
     )
 
     # Tier 2 — full HSD document (stored server-side, available via hsd field)
@@ -1577,6 +1578,7 @@ def _run_pipeline(input_path: Path, session_dir: Path) -> dict:
         units=metadata.units,
         gdt_annotations=metadata.gdt_annotations or None,
         mesh_info=mesh_info,
+        metadata=metadata,
     )
 
     summary = _build_summary(graph, features, metadata, body_count)

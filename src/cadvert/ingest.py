@@ -63,6 +63,8 @@ class PartMetadata:
     schema: str = ""                # AP203 / AP214 / AP242 (STEP only)
     originating_system: str = ""
     description: str = ""
+    project: str = ""               # design/project name from the FILE_NAME path, if any
+    components: list[str] = field(default_factory=list)   # assembly component names (STEP PRODUCT)
     triangle_count: int = 0         # populated for mesh formats
     gdt_annotations: list[GDTAnnotation] = field(default_factory=list)
 
@@ -398,6 +400,8 @@ def _parse_step_metadata(path: Path) -> PartMetadata:
     meta.schema = _parse_schema(text)
     meta.originating_system = _parse_originating_system(text)
     meta.description = _parse_description(text)
+    meta.components = _parse_components(text)
+    meta.project = _parse_project(text)
     meta.units, meta.unit_scale_to_mm = _parse_units(text)
 
     if _is_ap242(meta.schema):
@@ -420,11 +424,86 @@ def _parse_originating_system(text: str) -> str:
     m = re.search(r"ORIGINATING_SYSTEM\s*\(\s*'([^']*)'", text, re.IGNORECASE)
     if m:
         return m.group(1)
-    m = re.search(
-        r"FILE_NAME\s*\([^,]*,[^,]*,\([^)]*\),\([^)]*\),\s*'[^']*'\s*,\s*'([^']*)'",
-        text, re.IGNORECASE,
-    )
-    return m.group(1) if m else ""
+    # FILE_NAME(name, time_stamp, (author), (organization), preprocessor, originating_system,
+    # authorisation) — the CAD path often wraps across lines, so match with DOTALL and take
+    # the sixth quoted field rather than assuming a single line.
+    block = re.search(r"FILE_NAME\s*\((.*?)\)\s*;", text, re.IGNORECASE | re.DOTALL)
+    if block:
+        fields = re.findall(r"'((?:[^']|'')*)'", block.group(1))
+        if len(fields) >= 6:
+            return fields[5].strip()
+    return ""
+
+
+def _decode_step_string(s: str) -> str:
+    r"""Decode ISO 10303-21 character escapes so non-ASCII names read correctly.
+
+    ``\X\E1`` is one byte; ``\X2\1EA1...\X0\`` is a run of UTF-16 code units.
+    Vietnamese, Japanese and German part names all arrive this way.
+    """
+    def _utf16(m):
+        hexrun = m.group(1)
+        try:
+            return "".join(chr(int(hexrun[i:i + 4], 16)) for i in range(0, len(hexrun), 4))
+        except ValueError:
+            return m.group(0)
+
+    s = re.sub(r"\\X2\\((?:[0-9A-Fa-f]{4})+)\\X0\\", _utf16, s)
+    s = re.sub(r"\\X\\([0-9A-Fa-f]{2})", lambda m: chr(int(m.group(1), 16)), s)
+    s = re.sub(r"\\S\\(.)", lambda m: m.group(1), s)        # ISO 8859 shift
+    return s.replace("''", "'")
+
+
+# Component names that carry no information about the design.
+_GENERIC_COMPONENT_NAMES = {
+    "", "part", "part1", "assembly", "assembly1", "product", "component",
+    "unknown", "none", "solid", "body", "shape", "model", "default",
+}
+
+
+def _parse_components(text: str, limit: int = 400) -> list[str]:
+    """Assembly component names from STEP ``PRODUCT`` entities.
+
+    For an assembly these are the single richest clue to what the model is looking at:
+    catalog parts arrive as their real order codes (``Belt S5M-300``, ``ISO 4762 - M8 x 20``,
+    ``DIN 625 T1 - 6205``), which say far more about function than the geometry alone.
+    Returned in first-seen order, de-duplicated case-insensitively.
+    """
+    seen: dict[str, str] = {}
+    for m in re.finditer(r"PRODUCT\s*\(\s*'((?:[^']|'')*)'", text, re.IGNORECASE):
+        name = _decode_step_string(re.sub(r"[\r\n]+", "", m.group(1))).strip()
+        if not name or name.lower() in _GENERIC_COMPONENT_NAMES:
+            continue
+        key = name.lower()
+        if key not in seen:
+            seen[key] = name
+            if len(seen) >= limit:
+                break
+    return list(seen.values())
+
+
+def _parse_project(text: str) -> str:
+    """Design/project name from the FILE_NAME path — often the only plain-language
+    description of what the assembly is for. Returns the deepest meaningful folder."""
+    block = re.search(r"FILE_NAME\s*\((.*?)\)\s*;", text, re.IGNORECASE | re.DOTALL)
+    if not block:
+        return ""
+    fields = re.findall(r"'((?:[^']|'')*)'", block.group(1))
+    if not fields:
+        return ""
+    # STEP writers wrap long strings across lines. Drop only the newline itself — any
+    # leading space on the continuation line is real data (it separates words).
+    path = _decode_step_string(re.sub(r"[\r\n]+", "", fields[0])).strip()
+    if not path:
+        return ""
+    parts = [p for p in re.split(r"[\\/]+", path) if p.strip()]
+    if len(parts) < 2:
+        return ""
+    folder = parts[-2].strip()
+    # Skip drive letters and folders that are just a date or a number.
+    if len(folder) <= 2 or re.fullmatch(r"[\d.]+", folder):
+        return ""
+    return folder
 
 
 def _parse_description(text: str) -> str:

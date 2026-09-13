@@ -26,7 +26,15 @@ def result():
 # ── Package surface ───────────────────────────────────────────────────────────
 
 def test_version():
-    assert cadvert.__version__ == "0.3.0"
+    """__version__ must match pyproject.toml. Derived, so a release needs one edit, not two."""
+    import re
+    from pathlib import Path
+
+    pyproject = Path(__file__).parent.parent / "pyproject.toml"
+    if not pyproject.exists():
+        pytest.skip("installed package, not the source tree")
+    declared = re.search(r'^version\s*=\s*"([^"]+)"', pyproject.read_text(), re.M).group(1)
+    assert cadvert.__version__ == declared
 
 
 def test_top_level_exports():
