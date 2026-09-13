@@ -3,7 +3,9 @@
 Endpoints:
   GET  /                        → UI (index.html)
   POST /convert                 → upload CAD file, run full pipeline, return Tier 0 + images
-  POST /chat/{session_id}       → stream GPT response with Tier 0 context + tool calling
+  POST /chat/{session_id}       → stream an LLM response (OpenAI or Claude) with Tier 0 context + tool calling
+  POST /tool/{session_id}       → run one geometry tool directly (for clients running their own LLM)
+  GET  /tools                   → tool definitions
   DELETE /session/{session_id}  → clean up temp files
 """
 
@@ -318,6 +320,79 @@ CADVERT_TOOLS = [
 ]
 
 
+# ── LLM providers ─────────────────────────────────────────────────────────────
+# Two hosted providers share the same tool set. Clients pick one with `X-Provider`
+# (openai | anthropic); if absent it is inferred from the model name.
+SERVER_ANTHROPIC_KEY: Optional[str] = os.environ.get("ANTHROPIC_API_KEY")
+ALLOWED_ANTHROPIC_MODELS = {
+    "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-opus-4-8", "claude-sonnet-4-6",
+}
+DEFAULT_OPENAI_MODEL    = "gpt-4o-mini"
+DEFAULT_ANTHROPIC_MODEL = "claude-opus-5"
+MAX_TOOL_ROUNDS = 8
+TOOL_NAMES = {t["function"]["name"] for t in CADVERT_TOOLS}
+
+
+def _anthropic_tools() -> list[dict]:
+    """CADVERT_TOOLS (OpenAI function format) → Anthropic tool format."""
+    return [
+        {
+            "name":         t["function"]["name"],
+            "description":  t["function"]["description"],
+            "input_schema": t["function"]["parameters"],
+        }
+        for t in CADVERT_TOOLS
+    ]
+
+
+def _resolve_provider(x_provider: Optional[str], x_model: Optional[str]) -> tuple[str, str]:
+    """Return (provider, model) with unknown models clamped to each provider's default."""
+    p = (x_provider or "").strip().lower()
+    if p not in ("openai", "anthropic"):
+        p = "anthropic" if (x_model or "").startswith("claude-") else "openai"
+    if p == "anthropic":
+        model = x_model if x_model in ALLOWED_ANTHROPIC_MODELS else DEFAULT_ANTHROPIC_MODEL
+    else:
+        model = x_model if x_model in ALLOWED_MODELS else DEFAULT_OPENAI_MODEL
+    return p, model
+
+
+def _provider_available(provider: str) -> bool:
+    try:
+        if provider == "anthropic":
+            import anthropic  # noqa: F401
+        else:
+            import openai  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _system_prompt(tier0: str) -> str:
+    return (
+        "You are an expert mechanical engineer and manufacturing consultant. "
+        "You have direct access to the exact B-REP geometry of a CAD part through tool calls. "
+        "You have been given a compact Tier-0 summary — use it to orient yourself, "
+        "then call tools freely to get any geometry you need.\n\n"
+        "CRITICAL RULES:\n"
+        "- ALWAYS use tools when you need geometry details not in the summary. "
+        "Never say 'I recommend using external tools' or 'I cannot access this data' — "
+        "you HAVE the tools, call them.\n"
+        "- When asked to 'go deeper', call get_feature() or get_face() immediately "
+        "for the relevant features and report the exact numbers.\n"
+        "- When asked about a specific hole, fillet, boss etc., call get_feature() "
+        "with its ID from the summary.\n"
+        "- When asked about dimensions between two faces, call measure_distance().\n"
+        "- When asked about adjacent faces or local topology, call get_neighbors().\n"
+        "- Chain multiple tool calls in one response when needed — e.g. get all "
+        "hole features then measure distances between them.\n"
+        "- Reference faces as F12, edges as E5, features by ID (hole_1, fillet_3).\n"
+        "- Units are specified in the document header. Be precise with numbers.\n"
+        "- For mesh files (STL/OBJ): exact geometry is unavailable — say so clearly.\n\n"
+        f"<PART_SUMMARY>\n{tier0}\n</PART_SUMMARY>"
+    )
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/config")
@@ -326,6 +401,21 @@ async def config():
         "disable_auth":        DISABLE_AUTH,
         "stripe_enabled":      bool(STRIPE_SECRET_KEY and STRIPE_PRICE_ID),
         "stripe_byok_enabled": bool(STRIPE_SECRET_KEY and STRIPE_BYOK_PRICE_ID),
+        "providers": {
+            "openai": {
+                "available":     _provider_available("openai"),
+                "server_key":    bool(SERVER_OPENAI_KEY),
+                "models":        sorted(ALLOWED_MODELS),
+                "default_model": DEFAULT_OPENAI_MODEL,
+            },
+            "anthropic": {
+                "available":     _provider_available("anthropic"),
+                "server_key":    bool(SERVER_ANTHROPIC_KEY),
+                "models":        sorted(ALLOWED_ANTHROPIC_MODELS),
+                "default_model": DEFAULT_ANTHROPIC_MODEL,
+            },
+        },
+        "tools": sorted(TOOL_NAMES),
     })
 
 
@@ -666,6 +756,7 @@ async def convert(
     return JSONResponse({
         "session_id": session_id,
         "hsd":        result["hsd"],
+        "tier0":      result["tier0"],
         "images":     images,
         "format":     result["format"],
         "is_mesh":    result["is_mesh"],
@@ -681,19 +772,33 @@ async def chat(
     request: Request,
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
     x_openai_key: Optional[str] = Header(default=None, alias="X-OpenAI-Key"),
+    x_anthropic_key: Optional[str] = Header(default=None, alias="X-Anthropic-Key"),
+    x_provider: Optional[str] = Header(default=None, alias="X-Provider"),
     x_model: str = Header(default="gpt-4o", alias="X-Model"),
 ):
-    """Stream a GPT chat response using Tier 0 context + tool calling.
+    """Stream an LLM chat response using Tier 0 context + tool calling.
 
     Body JSON: { "messages": [{role, content}, ...] }
 
+    Providers:
+      - X-Provider: openai (default) | anthropic — inferred from a `claude-*` X-Model if absent
+      - BYOK key header: X-OpenAI-Key or X-Anthropic-Key
+      - Server keys: OPENAI_API_KEY / ANTHROPIC_API_KEY
+
     Tiering:
-      - First FREE_MESSAGES_PER_SESSION messages: server key, no X-OpenAI-Key needed
-      - After that: X-OpenAI-Key required (BYOK), up to BYOK_MESSAGES_PER_SESSION
+      - First FREE_MESSAGES_PER_SESSION messages: server key, no BYOK header needed
+      - After that: BYOK header required, up to BYOK_MESSAGES_PER_SESSION
     """
-    # Validate model before doing anything else
-    if x_model not in ALLOWED_MODELS:
-        x_model = "gpt-4o-mini"
+    provider, model = _resolve_provider(x_provider, x_model)
+    server_key = SERVER_ANTHROPIC_KEY if provider == "anthropic" else SERVER_OPENAI_KEY
+    user_key   = x_anthropic_key if provider == "anthropic" else x_openai_key
+    key_label  = "Anthropic" if provider == "anthropic" else "OpenAI"
+
+    if not _provider_available(provider):
+        raise HTTPException(
+            status_code=500,
+            detail=f"{provider} package not installed on the server — pip install cadvert[llm]",
+        )
 
     user = None if DISABLE_AUTH else _get_current_user(authorization)
     user_tier = "pro" if DISABLE_AUTH else _get_user_tier(user["sub"])
@@ -707,31 +812,31 @@ async def chat(
     # Decide which key to use based on tier
     if user_tier == "pro":
         # Pro: server pays, no cap
-        if not SERVER_OPENAI_KEY:
-            raise HTTPException(status_code=503, detail="Server API key not configured.")
-        api_key = SERVER_OPENAI_KEY
+        if not server_key:
+            raise HTTPException(status_code=503, detail=f"Server {key_label} API key not configured.")
+        api_key = server_key
     elif user_tier == "byok":
         # BYOK paid tier: their key required, but no message cap
-        if not x_openai_key:
+        if not user_key:
             raise HTTPException(
                 status_code=429,
                 detail={
                     "error": "byok_key_required",
-                    "message": "Enter your OpenAI API key to continue (included in your BYOK plan).",
+                    "message": f"Enter your {key_label} API key to continue (included in your BYOK plan).",
                 },
             )
-        api_key = x_openai_key
+        api_key = user_key
     elif msg_count < FREE_MESSAGES_PER_SESSION:
         # Free tier: server pays first N messages
-        if not SERVER_OPENAI_KEY:
+        if not server_key:
             raise HTTPException(
                 status_code=503,
-                detail="Server API key not configured. Please provide your own OpenAI key.",
+                detail=f"Server {key_label} API key not configured. Please provide your own {key_label} key.",
             )
-        api_key = SERVER_OPENAI_KEY
+        api_key = server_key
     else:
         # Free tier exhausted — show upgrade wall
-        if not x_openai_key:
+        if not user_key:
             raise HTTPException(
                 status_code=429,
                 detail={
@@ -740,7 +845,7 @@ async def chat(
                     "messages_used": msg_count,
                 },
             )
-        api_key = x_openai_key
+        api_key = user_key
         # Cap BYOK sessions too
         if BYOK_MESSAGES_PER_SESSION > 0 and msg_count >= FREE_MESSAGES_PER_SESSION + BYOK_MESSAGES_PER_SESSION:
             raise HTTPException(
@@ -771,56 +876,124 @@ async def chat(
     # Increment before the call so concurrent requests don't double-dip free quota
     session["message_count"] = msg_count + 1
 
-    try:
-        from openai import AsyncOpenAI
-    except ImportError:
-        raise HTTPException(status_code=500, detail="openai package not installed")
+    tier0      = session.get("tier0") or session.get("hsd", "")
+    system_msg = _system_prompt(tier0)
+    use_tools  = not session.get("is_mesh", False)
+
+    if provider == "anthropic":
+        gen = _stream_anthropic(api_key, model, system_msg, user_messages, session, use_tools)
+    else:
+        gen = _stream_openai(api_key, model, system_msg, user_messages, session, use_tools)
+    return StreamingResponse(gen, media_type="text/event-stream")
+
+
+async def _stream_openai(api_key: str, model: str, system_msg: str, user_messages: list[dict],
+                         session: dict, use_tools: bool):
+    """SSE generator: OpenAI chat completions with the CADVERT tool loop."""
+    from openai import AsyncOpenAI
 
     client = AsyncOpenAI(api_key=api_key)
-    tier0  = session.get("tier0") or session.get("hsd", "")
-
-    system_msg = (
-        "You are an expert mechanical engineer and manufacturing consultant. "
-        "You have direct access to the exact B-REP geometry of a CAD part through tool calls. "
-        "You have been given a compact Tier-0 summary — use it to orient yourself, "
-        "then call tools freely to get any geometry you need.\n\n"
-        "CRITICAL RULES:\n"
-        "- ALWAYS use tools when you need geometry details not in the summary. "
-        "Never say 'I recommend using external tools' or 'I cannot access this data' — "
-        "you HAVE the tools, call them.\n"
-        "- When asked to 'go deeper', call get_feature() or get_face() immediately "
-        "for the relevant features and report the exact numbers.\n"
-        "- When asked about a specific hole, fillet, boss etc., call get_feature() "
-        "with its ID from the summary.\n"
-        "- When asked about dimensions between two faces, call measure_distance().\n"
-        "- When asked about adjacent faces or local topology, call get_neighbors().\n"
-        "- Chain multiple tool calls in one response when needed — e.g. get all "
-        "hole features then measure distances between them.\n"
-        "- Reference faces as F12, edges as E5, features by ID (hole_1, fillet_3).\n"
-        "- Units are specified in the document header. Be precise with numbers.\n"
-        "- For mesh files (STL/OBJ): exact geometry is unavailable — say so clearly.\n\n"
-        f"<PART_SUMMARY>\n{tier0}\n</PART_SUMMARY>"
-    )
-
     openai_messages = [{"role": "system", "content": system_msg}] + user_messages
-    is_mesh = session.get("is_mesh", False)
-    tools = CADVERT_TOOLS if not is_mesh else []
+    tools = CADVERT_TOOLS if use_tools else []
 
-    async def stream_response():
-        try:
-            # Stream the initial response — detect tool calls mid-stream
+    try:
+        # Stream the initial response — detect tool calls mid-stream
+        stream = await client.chat.completions.create(
+            model=model,
+            messages=openai_messages,
+            tools=tools or None,
+            tool_choice="auto" if tools else None,
+            max_completion_tokens=2048,
+            stream=True,
+        )
+
+        accumulated_content = ""
+        accumulated_tool_calls: dict[int, dict] = {}
+        finish_reason = None
+
+        async for chunk in stream:
+            choice = chunk.choices[0] if chunk.choices else None
+            if choice is None:
+                continue
+            if choice.finish_reason:
+                finish_reason = choice.finish_reason
+            delta = choice.delta
+
+            if delta.content:
+                accumulated_content += delta.content
+                yield f"data: {json.dumps({'content': delta.content})}\n\n"
+
+            if delta.tool_calls:
+                for tc_delta in delta.tool_calls:
+                    idx = tc_delta.index
+                    if idx not in accumulated_tool_calls:
+                        accumulated_tool_calls[idx] = {
+                            "id":        tc_delta.id or "",
+                            "name":      (tc_delta.function.name or "") if tc_delta.function else "",
+                            "arguments": "",
+                        }
+                    if tc_delta.function:
+                        if tc_delta.function.name:
+                            accumulated_tool_calls[idx]["name"] = tc_delta.function.name
+                        if tc_delta.function.arguments:
+                            accumulated_tool_calls[idx]["arguments"] += tc_delta.function.arguments
+
+        # Tool-call loop
+        rounds = 0
+        while finish_reason == "tool_calls" and accumulated_tool_calls and rounds < MAX_TOOL_ROUNDS:
+            rounds += 1
+            tool_calls_list = [
+                accumulated_tool_calls[i]
+                for i in sorted(accumulated_tool_calls.keys())
+            ]
+
+            # Notify frontend — show "Analyzing geometry…" for each tool call
+            for tc in tool_calls_list:
+                yield f"data: {json.dumps({'tool_call': tc['name']})}\n\n"
+
+            # Append assistant turn with tool_calls
+            openai_messages.append({
+                "role":    "assistant",
+                "content": accumulated_content or None,
+                "tool_calls": [
+                    {
+                        "id":   tc["id"],
+                        "type": "function",
+                        "function": {
+                            "name":      tc["name"],
+                            "arguments": tc["arguments"],
+                        },
+                    }
+                    for tc in tool_calls_list
+                ],
+            })
+
+            # Execute each tool call and append results
+            for tc in tool_calls_list:
+                try:
+                    args = json.loads(tc["arguments"] or "{}")
+                except Exception:
+                    args = {}
+                result_data = _execute_tool(session, tc["name"], args)
+                openai_messages.append({
+                    "role":         "tool",
+                    "tool_call_id": tc["id"],
+                    "content":      json.dumps(result_data),
+                })
+
+            # Next round — stream again
+            accumulated_content = ""
+            accumulated_tool_calls = {}
+            finish_reason = None
+
             stream = await client.chat.completions.create(
-                model=x_model,
+                model=model,
                 messages=openai_messages,
-                tools=tools or None,
-                tool_choice="auto" if tools else None,
+                tools=tools,
+                tool_choice="auto",
                 max_completion_tokens=2048,
                 stream=True,
             )
-
-            accumulated_content = ""
-            accumulated_tool_calls: dict[int, dict] = {}
-            finish_reason = None
 
             async for chunk in stream:
                 choice = chunk.choices[0] if chunk.choices else None
@@ -849,94 +1022,115 @@ async def chat(
                             if tc_delta.function.arguments:
                                 accumulated_tool_calls[idx]["arguments"] += tc_delta.function.arguments
 
-            # Tool-call loop
-            while finish_reason == "tool_calls" and accumulated_tool_calls:
-                tool_calls_list = [
-                    accumulated_tool_calls[i]
-                    for i in sorted(accumulated_tool_calls.keys())
-                ]
+        yield "data: [DONE]\n\n"
 
-                # Notify frontend — show "Analyzing geometry…" for each tool call
-                for tc in tool_calls_list:
-                    yield f"data: {json.dumps({'tool_call': tc['name']})}\n\n"
+    except Exception as exc:
+        yield f"data: {json.dumps({'error': str(exc)})}\n\n"
 
-                # Append assistant turn with tool_calls
-                openai_messages.append({
-                    "role":    "assistant",
-                    "content": accumulated_content or None,
-                    "tool_calls": [
-                        {
-                            "id":   tc["id"],
-                            "type": "function",
-                            "function": {
-                                "name":      tc["name"],
-                                "arguments": tc["arguments"],
-                            },
-                        }
-                        for tc in tool_calls_list
-                    ],
+
+async def _stream_anthropic(api_key: str, model: str, system_msg: str, user_messages: list[dict],
+                            session: dict, use_tools: bool):
+    """SSE generator: Claude (Messages API, streaming) with the CADVERT tool loop.
+
+    Same event vocabulary as the OpenAI path — `content`, `tool_call`, `error`, `[DONE]` —
+    so every client works unchanged. Claude Opus 5 runs adaptive thinking by default;
+    thinking blocks are echoed back untouched when the tool loop continues the turn.
+    """
+    from anthropic import AsyncAnthropic
+
+    client = AsyncAnthropic(api_key=api_key)
+    tools = _anthropic_tools() if use_tools else []
+    messages = [
+        {"role": m["role"], "content": m["content"]}
+        for m in user_messages
+        if m.get("role") in ("user", "assistant") and m.get("content")
+    ]
+    if not messages or messages[0]["role"] != "user":
+        yield f"data: {json.dumps({'error': 'Conversation must start with a user message'})}\n\n"
+        return
+
+    try:
+        for _round in range(MAX_TOOL_ROUNDS + 1):
+            kwargs: dict = dict(model=model, max_tokens=8192, system=system_msg, messages=messages)
+            if tools:
+                kwargs["tools"] = tools
+
+            async with client.messages.stream(**kwargs) as stream:
+                async for event in stream:
+                    etype = getattr(event, "type", "")
+                    if etype == "content_block_start":
+                        block = getattr(event, "content_block", None)
+                        if getattr(block, "type", "") == "tool_use":
+                            yield f"data: {json.dumps({'tool_call': block.name})}\n\n"
+                    elif etype == "content_block_delta":
+                        delta = getattr(event, "delta", None)
+                        if getattr(delta, "type", "") == "text_delta" and delta.text:
+                            yield f"data: {json.dumps({'content': delta.text})}\n\n"
+                final = await stream.get_final_message()
+
+            if final.stop_reason == "refusal":
+                yield f"data: {json.dumps({'error': 'Claude declined to answer this request.'})}\n\n"
+                return
+
+            tool_uses = [b for b in final.content if b.type == "tool_use"]
+            if final.stop_reason != "tool_use" or not tool_uses:
+                break
+
+            # Continue the turn: assistant blocks (incl. thinking) + one user message of tool results
+            messages.append({"role": "assistant", "content": final.content})
+            results = []
+            for tu in tool_uses:
+                args = tu.input if isinstance(tu.input, dict) else {}
+                result_data = _execute_tool(session, tu.name, args)
+                results.append({
+                    "type":        "tool_result",
+                    "tool_use_id": tu.id,
+                    "content":     json.dumps(result_data),
+                    "is_error":    "error" in result_data,
                 })
+            messages.append({"role": "user", "content": results})
 
-                # Execute each tool call and append results
-                for tc in tool_calls_list:
-                    try:
-                        args = json.loads(tc["arguments"] or "{}")
-                    except Exception:
-                        args = {}
-                    result_data = _execute_tool(session, tc["name"], args)
-                    openai_messages.append({
-                        "role":         "tool",
-                        "tool_call_id": tc["id"],
-                        "content":      json.dumps(result_data),
-                    })
+        yield "data: [DONE]\n\n"
 
-                # Next round — stream again
-                accumulated_content = ""
-                accumulated_tool_calls = {}
-                finish_reason = None
+    except Exception as exc:
+        yield f"data: {json.dumps({'error': str(exc)})}\n\n"
 
-                stream = await client.chat.completions.create(
-                    model=x_model,
-                    messages=openai_messages,
-                    tools=tools,
-                    tool_choice="auto",
-                    max_completion_tokens=2048,
-                    stream=True,
-                )
 
-                async for chunk in stream:
-                    choice = chunk.choices[0] if chunk.choices else None
-                    if choice is None:
-                        continue
-                    if choice.finish_reason:
-                        finish_reason = choice.finish_reason
-                    delta = choice.delta
+@app.post("/tool/{session_id}")
+async def call_tool(
+    session_id: str,
+    request: Request,
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+):
+    """Run one geometry tool directly and return its JSON result.
 
-                    if delta.content:
-                        accumulated_content += delta.content
-                        yield f"data: {json.dumps({'content': delta.content})}\n\n"
+    For clients that drive the LLM themselves — e.g. the Mac/iPad app using Apple's
+    on-device model — so the model's tool calls hit the same exact-geometry code as
+    the hosted providers. Body: {"name": "get_feature", "arguments": {"feature_id": "hole_1"}}
+    """
+    if not DISABLE_AUTH:
+        _get_current_user(authorization)
+    session = _sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
 
-                    if delta.tool_calls:
-                        for tc_delta in delta.tool_calls:
-                            idx = tc_delta.index
-                            if idx not in accumulated_tool_calls:
-                                accumulated_tool_calls[idx] = {
-                                    "id":        tc_delta.id or "",
-                                    "name":      (tc_delta.function.name or "") if tc_delta.function else "",
-                                    "arguments": "",
-                                }
-                            if tc_delta.function:
-                                if tc_delta.function.name:
-                                    accumulated_tool_calls[idx]["name"] = tc_delta.function.name
-                                if tc_delta.function.arguments:
-                                    accumulated_tool_calls[idx]["arguments"] += tc_delta.function.arguments
+    body = await request.json()
+    name = str(body.get("name", ""))
+    args = body.get("arguments") or {}
+    if name not in TOOL_NAMES:
+        raise HTTPException(status_code=400, detail=f"Unknown tool: {name}")
+    if not isinstance(args, dict):
+        raise HTTPException(status_code=400, detail="arguments must be an object")
 
-            yield "data: [DONE]\n\n"
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(_executor, _execute_tool, session, name, args)
+    return JSONResponse(result)
 
-        except Exception as exc:
-            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
 
-    return StreamingResponse(stream_response(), media_type="text/event-stream")
+@app.get("/tools")
+async def list_tools():
+    """The geometry tools every provider gets, as name / description / JSON-schema parameters."""
+    return JSONResponse([t["function"] for t in CADVERT_TOOLS])
 
 
 @app.delete("/session/{session_id}")
@@ -978,6 +1172,21 @@ def _execute_tool(session: dict, tool_name: str, args: dict) -> dict:
             return {"error": f"Unknown tool: {tool_name}"}
     except Exception as exc:
         return {"error": f"Tool error: {exc}"}
+
+
+def _edge_length(edge) -> float | None:
+    """Edge length from its curve geometry (lines: length, circles: arc_length)."""
+    g = edge.geometry or {}
+    v = g.get("length", g.get("arc_length"))
+    try:
+        return round(float(v), 4) if v is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _face_edge_convexity(face, edge_by_id) -> list[str]:
+    """Faces have no convexity of their own — summarise their boundary edges."""
+    return sorted({edge_by_id[e].convexity for e in face.edge_ids if e in edge_by_id})
 
 
 def _parse_fid(s: str) -> int:
@@ -1025,10 +1234,10 @@ def _tool_get_feature(feature_id, features, feature_ids, graph, units) -> dict:
             face = face_by_id.get(fid)
             if face:
                 result["faces"].append({
-                    "id":        f"F{fid}",
-                    "geometry":  face.geometry,
-                    "area":      round(face.area, 4),
-                    "convexity": face.convexity,
+                    "id":             f"F{fid}",
+                    "geometry":       face.geometry,
+                    "area":           round(face.area, 4),
+                    "edge_convexity": _face_edge_convexity(face, edge_by_id),
                 })
 
         result["edges"] = []
@@ -1038,7 +1247,7 @@ def _tool_get_feature(feature_id, features, feature_ids, graph, units) -> dict:
                 result["edges"].append({
                     "id":            f"E{eid}",
                     "geometry":      edge.geometry,
-                    "length":        round(edge.length, 4) if edge.length else None,
+                    "length":        _edge_length(edge),
                     "connects":      [f"F{x}" for x in edge.face_ids],
                     "dihedral_angle": round(edge.dihedral_angle, 3) if edge.dihedral_angle else None,
                 })
@@ -1069,7 +1278,7 @@ def _tool_get_face(face_id, graph, units) -> dict:
             edges.append({
                 "id":            f"E{eid}",
                 "geometry":      edge.geometry,
-                "length":        round(edge.length, 4) if edge.length else None,
+                "length":        _edge_length(edge),
                 "connects_to":   other,
                 "dihedral_angle": round(edge.dihedral_angle, 3) if edge.dihedral_angle else None,
                 "convexity":     edge.convexity,
@@ -1079,7 +1288,7 @@ def _tool_get_face(face_id, graph, units) -> dict:
         "id":        f"F{fid}",
         "geometry":  face.geometry,
         "area":      round(face.area, 4),
-        "convexity": face.convexity,
+        "edge_convexity": _face_edge_convexity(face, edge_by_id),
         "edges":     edges,
         "units":     units,
     }
@@ -1101,7 +1310,7 @@ def _tool_get_edge(edge_id, graph, units) -> dict:
     return {
         "id":            f"E{eid}",
         "geometry":      edge.geometry,
-        "length":        round(edge.length, 4) if edge.length else None,
+        "length":        _edge_length(edge),
         "connects":      [f"F{x}" for x in edge.face_ids],
         "dihedral_angle": round(edge.dihedral_angle, 3) if edge.dihedral_angle else None,
         "convexity":     edge.convexity,
@@ -1211,7 +1420,7 @@ def _tool_neighbors(face_id, depth, graph, units) -> dict:
                                 "id":             f"F{nfid}",
                                 "geometry":       nbr.geometry,
                                 "area":           round(nbr.area, 4),
-                                "convexity":      nbr.convexity,
+                                "convexity":      edge.convexity,
                                 "via_edge":       f"E{eid}",
                                 "dihedral_angle": round(edge.dihedral_angle, 3) if edge.dihedral_angle else None,
                             })

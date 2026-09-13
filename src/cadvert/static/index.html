@@ -1204,18 +1204,27 @@
     <span class="free-counter" id="freeCounter" style="display:none">3 free messages left</span>
     <!-- API key row — hidden until BYOK wall is hit -->
     <div id="apiKeyRow" style="display:none;align-items:center;gap:6px">
-      <label for="apiKeyInput" style="color:var(--text-muted);font-size:11px;white-space:nowrap">Your OpenAI Key</label>
-      <input type="password" id="apiKeyInput" placeholder="sk-..." autocomplete="off"
+      <label for="apiKeyInput" style="color:var(--text-muted);font-size:11px;white-space:nowrap">Your API key</label>
+      <input type="password" id="apiKeyInput" placeholder="sk-… (OpenAI) or sk-ant-… (Anthropic)" autocomplete="off"
         style="width:160px;background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:5px 9px;font-size:11px;font-family:var(--mono);outline:none;">
       <button class="btn btn-ghost" onclick="saveKey()">Save</button>
     </div>
     <select id="modelSelect" style="display:none">
-      <option value="gpt-4o-mini">GPT-4o mini</option>
-      <option value="gpt-4o">GPT-4o</option>
-      <option value="gpt-4.1">GPT-4.1</option>
-      <option value="gpt-4.1-mini">GPT-4.1 mini</option>
-      <option value="gpt-5.4">GPT-5.4</option>
-      <option value="o4-mini">o4-mini</option>
+      <optgroup label="OpenAI">
+        <option value="gpt-4o-mini">GPT-4o mini</option>
+        <option value="gpt-4o">GPT-4o</option>
+        <option value="gpt-4.1">GPT-4.1</option>
+        <option value="gpt-4.1-mini">GPT-4.1 mini</option>
+        <option value="gpt-5.4">GPT-5.4</option>
+        <option value="o4-mini">o4-mini</option>
+      </optgroup>
+      <optgroup label="Anthropic">
+        <option value="claude-opus-5">Claude Opus 5</option>
+        <option value="claude-sonnet-5">Claude Sonnet 5</option>
+        <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
+        <option value="claude-opus-4-8">Claude Opus 4.8</option>
+        <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+      </optgroup>
     </select>
     <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;white-space:nowrap" onclick="signOut()">Sign out</button>
   </div>
@@ -1326,7 +1335,7 @@
       <div style="flex:1;border:1px solid var(--border);border-radius:10px;padding:14px;text-align:left;cursor:pointer;transition:border-color 150ms;" onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor='var(--border)'">
         <div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:4px;">BYOK</div>
         <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px;">$3<span style="font-size:11px;font-weight:500;color:var(--text-muted)">/mo</span></div>
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.5;">Use your own OpenAI key. You cover AI costs.</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.5;">Use your own OpenAI or Anthropic key. You cover AI costs.</div>
         <button class="wall-cta" style="margin-bottom:0;font-size:12px;padding:8px;" onclick="upgradeCheckout('byok')">Start $1 trial</button>
       </div>
       <div style="flex:1;border:2px solid var(--accent);border-radius:10px;padding:14px;text-align:left;cursor:pointer;position:relative;">
@@ -1351,8 +1360,8 @@
 <div class="wall-modal" id="byokKeyModal">
   <div class="wall-box">
     <div class="wall-icon">🔑</div>
-    <div class="wall-title">Enter your OpenAI key</div>
-    <div class="wall-sub">You're on the BYOK plan — paste your key below. It's sent directly to OpenAI and never stored on our server.</div>
+    <div class="wall-title">Enter your API key</div>
+    <div class="wall-sub">You're on the BYOK plan — paste your OpenAI or Anthropic key below. It's sent directly to the provider and never stored on our server.</div>
     <div class="wall-input-row">
       <input type="password" id="byokKeyInput2" placeholder="sk-..." autocomplete="off">
       <button class="btn btn-primary" onclick="submitByokKeyOnly()" style="padding:8px 14px;font-size:12px;">Continue</button>
@@ -1488,7 +1497,7 @@ function openByokKeyModal() {
 
 function submitByokKeyOnly() {
   const key = document.getElementById('byokKeyInput2').value.trim();
-  if (!key.startsWith('sk-')) { showToast('Enter a valid OpenAI key (starts with sk-)'); return; }
+  if (!key.startsWith('sk-')) { showToast('Enter a valid API key (starts with sk-)'); return; }
   byokKey = key;
   localStorage.setItem('cadvert_api_key', key);
   document.getElementById('apiKeyInput').value = key;
@@ -1712,7 +1721,7 @@ function openByokModal() {
 
 function submitByokKey() {
   const key = document.getElementById('byokKeyInput').value.trim();
-  if (!key.startsWith('sk-')) { showToast('Enter a valid OpenAI key (starts with sk-)'); return; }
+  if (!key.startsWith('sk-')) { showToast('Enter a valid API key (starts with sk-)'); return; }
   byokKey = key;
   localStorage.setItem('cadvert_api_key', key);
   document.getElementById('apiKeyInput').value = key;
@@ -1985,10 +1994,14 @@ async function _sendText(text) {
 
   const headers = { 'Content-Type': 'application/json' };
   if (googleToken) headers['Authorization'] = `Bearer ${googleToken}`;
+  // Always send a model header; server ignores it on free messages but needs it for BYOK.
+  // Claude models route to Anthropic, everything else to OpenAI.
+  const model = document.getElementById('modelSelect').value || 'gpt-4o-mini';
+  const provider = model.startsWith('claude-') ? 'anthropic' : 'openai';
+  headers['X-Model'] = model;
+  headers['X-Provider'] = provider;
   const key = getKey();
-  if (key) headers['X-OpenAI-Key'] = key;
-  // Always send a model header; server ignores it on free messages but needs it for BYOK
-  headers['X-Model'] = document.getElementById('modelSelect').value || 'gpt-4o-mini';
+  if (key) headers[provider === 'anthropic' ? 'X-Anthropic-Key' : 'X-OpenAI-Key'] = key;
 
   try {
     const res = await fetch(`/chat/${sessionId}`, {

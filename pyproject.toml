@@ -23,9 +23,10 @@ server = [
     "uvicorn[standard]",
     "python-multipart",
 ]
-# LLM semantic enrichment (HSD narrative annotations)
+# LLM chat providers for the server / desktop app (OpenAI + Claude)
 llm = [
     "openai>=1.0",
+    "anthropic>=1.0",
 ]
 # OBJ / STL mesh support
 mesh = [
@@ -55,3 +56,9 @@ cadvert-server = "cadvert.server:run"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cadvert"]
+
+[tool.pytest.ini_options]
+# Only the repo's own tests — the Apple app folder may contain a bundled Python engine
+# with thousands of third-party test files.
+testpaths = ["tests"]
+asyncio_mode = "auto"

@@ -71,9 +71,19 @@ pip install cadvert[graph]   # networkx  → .to_graph()
 pip install cadvert[mesh]    # trimesh   → area-weighted .to_points(), OBJ
 pip install cadvert[dxf]     # ezdxf     → .dxf drawings
 pip install cadvert[server]  # FastAPI REST server + web UI
-pip install cadvert[llm]     # OpenAI semantic enrichment
+pip install cadvert[llm]     # OpenAI + Claude chat providers (server / desktop app)
 pip install cadvert[full]    # everything
 ```
+
+## Mac, iPad and iPhone app
+
+A native SwiftUI app with the same design and flows as the web UI lives in
+[`APPLE OS APP/`](APPLE%20OS%20APP/README.md). On the Mac it bundles the Python +
+OpenCASCADE engine and works fully offline; on iPad/iPhone it connects to a hosted
+`cadvert-server`. Questions can be answered by Apple's on-device model (macOS 26 /
+iOS 26, no key), OpenAI, or Claude — the server's `/chat` takes an `X-Provider` header
+and the web UI's model menu lists both vendors. See that folder's README for building and DISTRIBUTION.md for
+selling it (Mac App Store, direct DMG, iOS).
 
 ## CLI
 
