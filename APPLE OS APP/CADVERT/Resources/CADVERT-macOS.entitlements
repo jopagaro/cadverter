@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Release: App Sandbox on (required for the Mac App Store). -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- Talk to the local engine and remote cadvert servers. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- The bundled engine binds a random loopback port. -->
+	<key>com.apple.security.network.server</key>
+	<true/>
+	<!-- Open the CAD files the user picks or drops in. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<!-- The engine is a Python interpreter loading many compiled extensions (OCCT, VTK, numpy).
+	     Every Mach-O is re-signed with the app's identity by scripts/sign-engine.sh, so
+	     library validation normally passes; keep this on for robustness with Hardened Runtime. -->
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+</dict>
+</plist>

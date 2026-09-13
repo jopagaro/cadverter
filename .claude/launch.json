@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cadvert-server",
+      "runtimeExecutable": "/Users/johnpaulroche/coding projects/CADVERT/.venv/bin/python",
+      "runtimeArgs": ["-m", "uvicorn", "cadvert.server:app", "--host", "0.0.0.0", "--port", "8080", "--app-dir", "/Users/johnpaulroche/coding projects/CADVERT/src"],
+      "port": 8080,
+      "env": {
+        "DISABLE_AUTH": "1"
+      }
+    }
+  ]
+}

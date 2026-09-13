@@ -1,0 +1,143 @@
+# CADVERT — Apple platforms app (macOS · iPadOS · iOS)
+# Regenerate the Xcode project with:  xcodegen generate
+name: CADVERT
+options:
+  bundleIdPrefix: com.cadvert
+  xcodeVersion: "26.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+  deploymentTarget:
+    iOS: "17.0"
+    macOS: "14.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    DEVELOPMENT_TEAM: AZVC5A74YD
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    SWIFT_EMIT_LOC_STRINGS: YES
+    GENERATE_INFOPLIST_FILE: NO
+
+targets:
+  CADVERT:
+    type: application
+    supportedDestinations: [iOS, macOS]
+    sources:
+      - path: CADVERT
+        excludes:
+          - "Resources/*.entitlements"
+    info:
+      path: CADVERT/Resources/Info.plist
+      properties:
+        CFBundleName: CADVERT
+        CFBundleDisplayName: CADVERT
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.developer-tools
+        NSHumanReadableCopyright: "© 2026 CADVERT"
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        LSSupportsOpeningDocumentsInPlace: true
+        UISupportsDocumentBrowser: false
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: com.cadvert.step
+            UTTypeDescription: STEP CAD file
+            UTTypeConformsTo: [public.data, public.content]
+            UTTypeTagSpecification:
+              public.filename-extension: [step, stp]
+              public.mime-type: [model/step, application/step]
+          - UTTypeIdentifier: com.cadvert.iges
+            UTTypeDescription: IGES CAD file
+            UTTypeConformsTo: [public.data, public.content]
+            UTTypeTagSpecification:
+              public.filename-extension: [iges, igs]
+              public.mime-type: [model/iges]
+          - UTTypeIdentifier: com.cadvert.brep
+            UTTypeDescription: OpenCASCADE BREP file
+            UTTypeConformsTo: [public.data, public.content]
+            UTTypeTagSpecification:
+              public.filename-extension: [brep]
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: CAD file
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - com.cadvert.step
+              - com.cadvert.iges
+              - com.cadvert.brep
+              - public.standard-tesselated-geometry-format
+              - public.geometry-definition-format
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.cadvert.CADVERT
+        PRODUCT_NAME: CADVERT
+        INFOPLIST_KEY_CFBundleDisplayName: CADVERT
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: NO
+        ENABLE_HARDENED_RUNTIME: YES
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": CADVERT/Resources/CADVERT-macOS.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]": CADVERT/Resources/CADVERT-iOS.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": CADVERT/Resources/CADVERT-iOS.entitlements
+        COMBINE_HIDPI_IMAGES: YES
+      configs:
+        Debug:
+          # Debug builds run WITHOUT the App Sandbox so a developer's own Python
+          # environment (e.g. the repo's .venv) can be used as the local engine.
+          "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": CADVERT/Resources/CADVERT-macOS-debug.entitlements
+    postBuildScripts:
+      # Optional bundled Python engine (macOS only), produced by scripts/bundle-engine.sh.
+      - name: Copy bundled engine (macOS)
+        path: scripts/copy-engine.sh
+        shell: /bin/bash
+        basedOnDependencyAnalysis: false
+      - name: Sign bundled engine (macOS)
+        path: scripts/sign-engine.sh
+        shell: /bin/sh
+        basedOnDependencyAnalysis: false
+
+  CADVERTTests:
+    type: bundle.unit-test
+    supportedDestinations: [macOS, iOS]
+    sources:
+      - path: CADVERTTests
+    dependencies:
+      - target: CADVERT
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.cadvert.CADVERTTests
+        GENERATE_INFOPLIST_FILE: YES
+        "TEST_HOST[sdk=macosx*]": "$(BUILT_PRODUCTS_DIR)/CADVERT.app/Contents/MacOS/CADVERT"
+
+schemes:
+  CADVERT:
+    build:
+      targets:
+        CADVERT: all
+        CADVERTTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - CADVERTTests
+    archive:
+      config: Release

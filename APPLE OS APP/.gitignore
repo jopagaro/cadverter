@@ -1,0 +1,18 @@
+# Generated / build output
+build/
+build-*/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.dmg
+dist/
+
+# Xcode project is generated from project.yml by XcodeGen — run `make generate`.
+# Keeping it out of git avoids conflicts in a large machine-written file.
+CADVERT.xcodeproj/
+
+# Bundled Python engines — hundreds of MB each, produced by scripts/bundle-engine.sh.
+# One folder per architecture (engine-arm64, engine-x86_64) plus the legacy name.
+Engine/engine/
+Engine/engine-*/
+Engine/downloads/
