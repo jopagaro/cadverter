@@ -24,6 +24,7 @@ AP242 GD&T is extracted from STEP files only.
 from __future__ import annotations
 import re
 from dataclasses import dataclass, field
+from typing import Any
 from pathlib import Path
 
 from OCP.TopoDS import TopoDS_Shape
@@ -65,6 +66,7 @@ class PartMetadata:
     description: str = ""
     project: str = ""               # design/project name from the FILE_NAME path, if any
     components: list[str] = field(default_factory=list)   # assembly component names (STEP PRODUCT)
+    assembly: Any = None            # AssemblyInfo — face → named component, quantities, volumes
     triangle_count: int = 0         # populated for mesh formats
     gdt_annotations: list[GDTAnnotation] = field(default_factory=list)
 
@@ -130,13 +132,32 @@ def _load_step(path: Path) -> tuple[TopoDS_Shape, int, PartMetadata]:
     from OCP.STEPControl import STEPControl_Reader
     from OCP.IFSelect import IFSelect_RetDone
 
-    reader = STEPControl_Reader()
-    status = reader.ReadFile(str(path))
-    if status != IFSelect_RetDone:
-        raise IngestError(f"STEP reader failed (status {status}): {path}")
+    # Prefer the XDE reader: same geometry, plus the named product tree that lets every
+    # face be attributed to a component. Face IDs are only comparable within one load,
+    # so whichever reader produces the shape must also produce the structure.
+    shape = None
+    assembly = None
+    try:
+        from .assembly import read_step_with_structure, extract_assembly
 
-    reader.TransferRoots()
-    shape = reader.OneShape()
+        struct = read_step_with_structure(path)
+        if struct and not struct.shape.IsNull() and _count_faces(struct.shape) > 0:
+            assembly = extract_assembly(struct.shape, struct.shape_tool)
+            if assembly:
+                shape = struct.shape
+            else:
+                assembly = None      # no usable structure; fall through to the plain read
+    except Exception:
+        shape, assembly = None, None
+
+    if shape is None:
+        reader = STEPControl_Reader()
+        status = reader.ReadFile(str(path))
+        if status != IFSelect_RetDone:
+            raise IngestError(f"STEP reader failed (status {status}): {path}")
+
+        reader.TransferRoots()
+        shape = reader.OneShape()
     if shape is None or shape.IsNull():
         raise IngestError(f"No usable shape in STEP file: {path}")
 
@@ -168,6 +189,13 @@ def _load_step(path: Path) -> tuple[TopoDS_Shape, int, PartMetadata]:
     body_count = _count_bodies(shape)
     meta = _parse_step_metadata(path)
     meta.source_format = "STEP"
+    meta.assembly = assembly
+    if assembly and not meta.components:
+        # Names from the product tree, de-duplicated, if the text scan found none.
+        seen: dict[str, str] = {}
+        for inst in assembly.instances:
+            seen.setdefault(inst.name.lower(), inst.name)
+        meta.components = list(seen.values())
     return shape, body_count, meta
 
 

@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Assembly structure.** STEP files are now read with OpenCASCADE's XDE reader, which
+  returns the same geometry plus the product tree. Every face is attributed to the named
+  component that owns it, giving a bill of materials with quantities, per-part volume and
+  bounding box. On a 4,322-face machine assembly that is 183 instances across 45 part
+  types, all faces attributed, in about 4 ms. No new dependency and no change in install
+  size — the XDE reader is already inside `cadquery-ocp`.
+- `result.assembly`, `result.component_of_face()`, `result.component_of_feature()` and
+  `result.mass_properties(density, name_filter)`, which computes per-part and total mass
+  in g, kg, oz and lb. The arithmetic deliberately lives in the library rather than in a
+  language model's head.
+- Two tools for LLM callers: `get_component` (one part's quantity, volume, faces and
+  features) and `compute_mass`. `get_face` and `get_feature` now also name the component
+  they belong to, so "which part is this hole in" is answerable.
+- Volumes are reported for the modelled solid, and the summary says so: fastener threads
+  are usually not modelled, which makes a fastener mass slightly high.
+
+### Fixed
+
+- Names stamped by a translator (`Open CASCADE STEP translator 7.9 1` and similar) are no
+  longer surfaced as component names; a file whose only "component" is such a placeholder
+  reports no assembly at all rather than inventing one.
+- Ingest falls back to the plain STEP reader whenever the structure-aware read fails, so
+  no file that loaded before can stop loading.
+
 ## 0.3.1
 
 ### Fixed

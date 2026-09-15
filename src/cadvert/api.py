@@ -114,6 +114,16 @@ class CadvertResult:
             "components": list(self.metadata.components or []),
             "project": self.metadata.project or None,
         }
+        a = self.assembly
+        if a:
+            d["assembly"] = {
+                "instance_count": a.instance_count,
+                "part_count": a.part_count,
+                "bill_of_materials": [
+                    {k: v for k, v in row.items() if k != "locations"}
+                    for row in a.bill_of_materials()
+                ],
+            }
 
         if self.metadata.is_mesh:
             d["global"] = _jsonify(self._mesh_info or {})
@@ -287,6 +297,68 @@ class CadvertResult:
         from .mesh import sample_points
 
         return sample_points(self.shape, count, deflection=deflection, seed=seed)
+
+    # ── Assembly structure ────────────────────────────────────────────────────
+    @property
+    def assembly(self):
+        """Product tree with face→component mapping, or None for a file without one."""
+        return getattr(self.metadata, "assembly", None)
+
+    def component_of_face(self, face_id: int):
+        """The named component owning a face, or None."""
+        a = self.assembly
+        return a.owner_of_face(face_id) if a else None
+
+    def component_of_feature(self, feature) -> Optional[str]:
+        """The component a detected feature sits in, by majority of its faces."""
+        a = self.assembly
+        if not a:
+            return None
+        owner = a.owner_of_faces(getattr(feature, "face_ids", ()) or ())
+        return owner.name if owner else None
+
+    def mass_properties(self, density_g_cm3: float = 7.85,
+                        name_filter: str | None = None) -> dict:
+        """Mass of the assembly, or of the parts whose name contains ``name_filter``.
+
+        ``density_g_cm3`` defaults to plain carbon steel. The arithmetic is done here,
+        not by a language model, because chaining hundreds of multiplications through
+        one is exactly where quiet errors appear.
+
+        Volumes are of the modelled solid; unmodelled fastener threads make a fastener
+        mass a slight over-estimate. ``assumptions`` says so in the returned data.
+        """
+        a = self.assembly
+        if not a:
+            return {"error": "This file has no assembly structure; per-part mass is unavailable."}
+        density_mm3 = density_g_cm3 / 1000.0          # g/cm³ → g/mm³
+        rows, total_mass, total_qty = [], 0.0, 0
+        for row in a.bill_of_materials():
+            if name_filter and name_filter.lower() not in row["name"].lower():
+                continue
+            each = row["volume_each"] * density_mm3
+            tot = each * row["quantity"]
+            total_mass += tot
+            total_qty += row["quantity"]
+            rows.append({
+                "name": row["name"], "quantity": row["quantity"],
+                "volume_each_mm3": round(row["volume_each"], 3),
+                "mass_each_g": round(each, 4), "mass_total_g": round(tot, 3),
+            })
+        return {
+            "density_g_cm3": density_g_cm3,
+            "filter": name_filter,
+            "part_types": len(rows), "total_parts": total_qty,
+            "total_mass_g": round(total_mass, 3),
+            "total_mass_kg": round(total_mass / 1000.0, 5),
+            "total_mass_oz": round(total_mass / 28.349523125, 4),
+            "total_mass_lb": round(total_mass / 453.59237, 5),
+            "parts": rows,
+            "assumptions": [
+                f"density {density_g_cm3} g/cm³ applied to every matched part",
+                "volumes are of the modelled solid; unmodelled threads make fastener mass slightly high",
+            ],
+        }
 
     # ── Rendering passthrough ─────────────────────────────────────────────────
     def render(self, output_dir: str | Path, image_size=(1200, 900)) -> list[Path]:

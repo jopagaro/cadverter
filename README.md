@@ -31,18 +31,31 @@ result.to_graph()           # networkx face-adjacency graph  (GNN / UV-Net)
 result.to_points(2048)      # (N,3) surface point cloud       (PointNet / 3D-CNN)
 ```
 
-For an assembly, CADVERT also reports what the file says the parts *are* — catalog
-components arrive as real order codes, which describe function in a way geometry alone
-cannot:
+For an assembly, CADVERT reads the product tree: every face is attributed to a named
+component, so you get a bill of materials with quantities and per-part volume alongside
+the geometry.
 
 ```
 DESIGN: Cylindrical face chamfering machine
 AUTHORED IN: Autodesk Inventor 2021
-COMPONENTS — 51 named in the file
-  DIN 625 T1 - 6205 - 25 x 52 x 15
-  Belt S5M-300
-  ISO 4762 - M8 x 20
+ASSEMBLY — 183 parts of 45 types
+   qty  part                                 volume each
+    36  ISO 4762 - M5 x 10                     435.1 mm³
+     8  LBHSW20                             26,318.7 mm³
+     4  DIN 625 T1 - 6205 - 25 x 52 x 15    15,744.5 mm³
 ```
+
+Which turns questions of quantity into arithmetic over measured geometry:
+
+```python
+result = cadvert.analyze("machine.step")
+result.assembly.bill_of_materials()          # qty, volume, where each part is fitted
+result.component_of_face(1500).name          # 'LBHSW20'
+result.mass_properties(7.85, "ISO 4762")     # 66 screws, 337.1 g, 11.89 oz
+```
+
+Files without a product tree (a single part, IGES, a mesh) simply report no assembly
+rather than inventing one.
 
 Example `to_text()` output:
 

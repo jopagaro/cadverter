@@ -655,6 +655,27 @@ def _render_components(metadata, *, limit: int) -> list[str]:
     if system:
         out.append(f"AUTHORED IN: {system}")
 
+    assembly = getattr(metadata, "assembly", None)
+    if assembly:
+        # A real product tree beats a flat name list: quantities and per-part volume turn
+        # "what do the screws weigh" into arithmetic instead of a guess.
+        bom = assembly.bill_of_materials()
+        shown = bom[:limit]
+        hidden = len(bom) - len(shown)
+        head = (f"ASSEMBLY — {assembly.instance_count} parts of {assembly.part_count} types"
+                f"  |  use get_component(name) for one part's faces and features")
+        out.append(head)
+        out.append(f"  {'qty':>4}  {'part':44} {'volume each':>14}")
+        for row in shown:
+            vol = f"{row['volume_each']:,.1f} mm³" if row["volume_each"] else "—"
+            out.append(f"  {row['quantity']:>4}  {row['name'][:44]:44} {vol:>14}")
+        if hidden > 0:
+            out.append(f"  … and {hidden} more part types")
+        out.append("NOTE: volumes are of the modelled solid. Fastener threads are usually")
+        out.append("      not modelled, so a mass from these runs slightly high.")
+        out.append("")
+        return out
+
     if components:
         # A component naming a recognised standard or a vendor order code says more than
         # an internal drawing number, so surface those first.

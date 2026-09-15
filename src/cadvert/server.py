@@ -299,6 +299,52 @@ CADVERT_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "get_component",
+            "description": (
+                "Get one named assembly component: how many are fitted, its volume and "
+                "bounding box, its face IDs and the features detected in it. Use the part "
+                "name exactly as listed in the ASSEMBLY table of the summary."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Component name, e.g. 'Belt S5M-300' or 'ISO 4762 - M8 x 20'. Partial names match.",
+                    }
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "compute_mass",
+            "description": (
+                "Compute mass from the modelled geometry for a given material density. "
+                "Returns per-part and total mass in g, kg, oz and lb. Optionally restrict "
+                "to parts whose name contains a filter, e.g. 'ISO 4762' for screws. "
+                "Always use this rather than multiplying volumes yourself."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "density_g_cm3": {
+                        "type": "number",
+                        "description": "Material density in g/cm³ (steel 7.85, aluminium 2.70, brass 8.50, ABS 1.04). Default 7.85.",
+                    },
+                    "name_filter": {
+                        "type": "string",
+                        "description": "Only include parts whose name contains this text. Omit for the whole assembly.",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_faces",
             "description": "Find faces matching geometric criteria (type, radius range, area range).",
             "parameters": {
@@ -1151,12 +1197,13 @@ def _execute_tool(session: dict, tool_name: str, args: dict) -> dict:
     shape        = session.get("shape")
     face_shape_map = session.get("face_shape_map") or {}
     units        = session.get("units", "mm")
+    assembly     = session.get("assembly")
 
     try:
         if tool_name == "get_feature":
-            return _tool_get_feature(args.get("feature_id", ""), features, feature_ids, graph, units)
+            return _tool_get_feature(args.get("feature_id", ""), features, feature_ids, graph, units, assembly)
         elif tool_name == "get_face":
-            return _tool_get_face(args.get("face_id", ""), graph, units)
+            return _tool_get_face(args.get("face_id", ""), graph, units, assembly)
         elif tool_name == "get_edge":
             return _tool_get_edge(args.get("edge_id", ""), graph, units)
         elif tool_name == "measure_distance":
@@ -1168,6 +1215,10 @@ def _execute_tool(session: dict, tool_name: str, args: dict) -> dict:
             return _tool_neighbors(args.get("face_id", ""), int(args.get("depth", 1)), graph, units)
         elif tool_name == "search_faces":
             return _tool_search(args, graph, units)
+        elif tool_name == "get_component":
+            return _tool_get_component(args.get("name", ""), session)
+        elif tool_name == "compute_mass":
+            return _tool_compute_mass(args, session)
         else:
             return {"error": f"Unknown tool: {tool_name}"}
     except Exception as exc:
@@ -1189,6 +1240,104 @@ def _face_edge_convexity(face, edge_by_id) -> list[str]:
     return sorted({edge_by_id[e].convexity for e in face.edge_ids if e in edge_by_id})
 
 
+def _component_of(assembly, face_ids) -> dict:
+    """``{"component": name}`` when the file has a product tree, else nothing.
+
+    Answering "which part is this hole in" is most of what makes an assembly legible.
+    """
+    if not assembly:
+        return {}
+    owner = assembly.owner_of_faces(face_ids or ())
+    if owner is None:
+        return {}
+    out = {"component": owner.name}
+    if owner.path:
+        out["component_path"] = owner.location
+    return out
+
+
+def _tool_get_component(name: str, session: dict) -> dict:
+    assembly = session.get("assembly")
+    if not assembly:
+        return {"error": "This file has no assembly structure (single part, or a format without one)."}
+    q = (name or "").strip().lower()
+    if not q:
+        return {"error": "Provide a component name."}
+    rows = [r for r in assembly.bill_of_materials() if q in r["name"].lower()]
+    if not rows:
+        return {
+            "error": f"No component matching '{name}'",
+            "available": [r["name"] for r in assembly.bill_of_materials()[:40]],
+        }
+
+    features = session.get("features") or []
+    feature_ids = session.get("feature_ids") or []
+    out = []
+    for row in rows:
+        insts = [i for i in assembly.instances if i.name == row["name"]]
+        first = insts[0]
+        feats = []
+        for fid, feat in zip(feature_ids, features):
+            owner = assembly.owner_of_faces(getattr(feat, "face_ids", ()) or ())
+            if owner is not None and owner.name == row["name"]:
+                feats.append(f"{fid}:{feat.feature_type}")
+        out.append({
+            "name": row["name"],
+            "quantity": row["quantity"],
+            "faces_each": row["faces_each"],
+            "volume_each_mm3": round(row["volume_each"], 3),
+            "bbox_each": first.bbox,
+            "fitted_in": row["locations"][:6],
+            "face_ids_first_instance": [f"F{f}" for f in first.face_ids[:60]],
+            "features_in_this_part": feats[:40],
+            "feature_count": len(feats),
+        })
+    return {"matches": len(out), "components": out, "units": session.get("units", "mm")}
+
+
+def _tool_compute_mass(args: dict, session: dict) -> dict:
+    assembly = session.get("assembly")
+    if not assembly:
+        return {"error": "This file has no assembly structure; per-part mass is unavailable."}
+    try:
+        density = float(args.get("density_g_cm3") or 7.85)
+    except (TypeError, ValueError):
+        density = 7.85
+    if density <= 0:
+        return {"error": "density_g_cm3 must be positive"}
+    name_filter = args.get("name_filter") or None
+
+    density_mm3 = density / 1000.0
+    rows, total, qty = [], 0.0, 0
+    for row in assembly.bill_of_materials():
+        if name_filter and name_filter.lower() not in row["name"].lower():
+            continue
+        each = row["volume_each"] * density_mm3
+        tot = each * row["quantity"]
+        total += tot
+        qty += row["quantity"]
+        rows.append({
+            "name": row["name"], "quantity": row["quantity"],
+            "volume_each_mm3": round(row["volume_each"], 3),
+            "mass_each_g": round(each, 4), "mass_total_g": round(tot, 3),
+        })
+    if not rows:
+        return {"error": f"No parts matching '{name_filter}'"}
+    return {
+        "density_g_cm3": density, "filter": name_filter,
+        "part_types": len(rows), "total_parts": qty,
+        "total_mass_g": round(total, 3),
+        "total_mass_kg": round(total / 1000.0, 5),
+        "total_mass_oz": round(total / 28.349523125, 4),
+        "total_mass_lb": round(total / 453.59237, 5),
+        "parts": rows,
+        "assumptions": [
+            f"density {density} g/cm³ applied to every matched part",
+            "volumes are of the modelled solid; unmodelled threads make fastener mass slightly high",
+        ],
+    }
+
+
 def _parse_fid(s: str) -> int:
     return int(str(s).lstrip("Ff"))
 
@@ -1196,7 +1345,7 @@ def _parse_eid(s: str) -> int:
     return int(str(s).lstrip("Ee"))
 
 
-def _tool_get_feature(feature_id, features, feature_ids, graph, units) -> dict:
+def _tool_get_feature(feature_id, features, feature_ids, graph, units, assembly=None) -> dict:
     if not features:
         return {"error": "No features available for this part"}
 
@@ -1253,10 +1402,13 @@ def _tool_get_feature(feature_id, features, feature_ids, graph, units) -> dict:
                 })
 
     result["units"] = units
+
+    result.update(_component_of(assembly, feat.face_ids))
+
     return result
 
 
-def _tool_get_face(face_id, graph, units) -> dict:
+def _tool_get_face(face_id, graph, units, assembly=None) -> dict:
     if not graph:
         return {"error": "No B-REP graph available"}
     try:
@@ -1291,6 +1443,7 @@ def _tool_get_face(face_id, graph, units) -> dict:
         "edge_convexity": _face_edge_convexity(face, edge_by_id),
         "edges":     edges,
         "units":     units,
+        **_component_of(assembly, [fid]),
     }
 
 
@@ -1592,6 +1745,7 @@ def _run_pipeline(input_path: Path, session_dir: Path) -> dict:
         "spatial":        spatial,
         "shape":          shape,
         "face_shape_map": face_shape_map,
+        "assembly":       metadata.assembly,
         "image_paths":    image_paths,
         "format":         metadata.source_format,
         "is_mesh":        metadata.is_mesh,
