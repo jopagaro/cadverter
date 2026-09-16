@@ -21,10 +21,6 @@ struct HeaderBar: View {
 
             Spacer(minLength: 8)
 
-            if let counter = model.freeCounter, !isCompact {
-                FreeCounterPill(counter: counter)
-            }
-
             if !isCompact { ProviderPill() }
             EngineStatusPill()
 
@@ -51,65 +47,6 @@ struct HeaderBar: View {
         .padding(.horizontal, isCompact ? 14 : 20)
         .frame(height: 48)
         .background(p.surface)
-    }
-}
-
-/// `.free-counter`
-struct FreeCounterPill: View {
-    var counter: FreeCounter
-    @Environment(\.palette) private var p
-
-    var body: some View {
-        Text(counter.text)
-            .typo(10, .medium)
-            .foregroundStyle(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(p.surfaceAlt, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(borderColor, lineWidth: 1))
-            .lineLimit(1)
-    }
-
-    private var color: Color {
-        switch counter.level { case .normal: return p.textMuted; case .warn: return p.warning; case .gone: return p.danger }
-    }
-    private var borderColor: Color {
-        switch counter.level { case .normal: return p.border; case .warn: return p.warningBg; case .gone: return p.danger.opacity(0.2) }
-    }
-}
-
-/// Engine / server connection state; tap to open Settings.
-struct EngineStatusPill: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.palette) private var p
-
-    var body: some View {
-        let status = model.engineStatus
-        Button { model.sheet = .settings } label: {
-            HStack(spacing: 6) {
-                Circle().fill(dot(status.tone)).frame(width: 6, height: 6)
-                Text(status.text)
-                    .typo(10, .medium)
-                    .foregroundStyle(p.textMuted)
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(p.surfaceAlt, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(p.border, lineWidth: 1))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Engine status — click for Settings")
-    }
-
-    private func dot(_ tone: AppModel.StatusTone) -> Color {
-        switch tone {
-        case .ok: return p.success
-        case .busy: return p.warning
-        case .bad: return p.danger
-        case .off: return p.textDim
-        }
     }
 }
 
@@ -142,5 +79,40 @@ struct ProviderPill: View {
         }
         .buttonStyle(.plain)
         .help("AI provider — click to change")
+    }
+}
+
+/// Engine state — local process or remote address. Tap to open Settings.
+struct EngineStatusPill: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var p
+
+    var body: some View {
+        let status = model.engineStatus
+        Button { model.sheet = .settings } label: {
+            HStack(spacing: 6) {
+                Circle().fill(dot(status.tone)).frame(width: 6, height: 6)
+                Text(status.text)
+                    .typo(10, .medium)
+                    .foregroundStyle(p.textMuted)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(p.surfaceAlt, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(p.border, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Engine status — click for Settings")
+    }
+
+    private func dot(_ tone: AppModel.StatusTone) -> Color {
+        switch tone {
+        case .ok:   return p.success
+        case .busy: return p.warning
+        case .bad:  return p.danger
+        case .off:  return p.textDim
+        }
     }
 }

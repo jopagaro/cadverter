@@ -129,11 +129,7 @@ struct SheetHost: View {
             case .about:       AboutView(section: .about)
             case .developers:  AboutView(section: .developers)
             case .settings:    SettingsView(embedded: false)
-            case .byokWall:    ByokWallView()
-            case .byokKeyOnly: ByokKeyOnlyView()
-            case .fileLimit:   FileLimitView()
             case .keyNeeded:   KeyNeededView()
-            case .signIn:      SignInNeededView()
             case .engineLog:   EngineLogView()
             }
         }

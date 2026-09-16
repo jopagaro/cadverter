@@ -144,18 +144,6 @@ struct SettingsView: View {
                         ThemeToggle(theme: $settings.theme, showSystem: true)
                     }
 
-                    // ── Advanced ──
-                    if settings.engineMode == .remote {
-                        VStack(alignment: .leading, spacing: 10) {
-                            SectionLabel(text: "Advanced")
-                            Text("Bearer token sent as `Authorization` to servers that require sign-in.")
-                                .typo(10.5, .medium).foregroundStyle(pal.textDim)
-                            TextField("token", text: $settings.bearerToken)
-                                .fieldChrome()
-                                .onSubmit { Task { await model.connect() } }
-                        }
-                    }
-
                     // ── About ──
                     VStack(alignment: .leading, spacing: 6) {
                         SectionLabel(text: "About")

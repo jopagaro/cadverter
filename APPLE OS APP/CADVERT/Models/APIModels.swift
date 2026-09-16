@@ -4,18 +4,17 @@ import Foundation
 
 /// `GET /config`
 struct ServerConfig: Decodable, Equatable {
-    var disableAuth: Bool
-    var stripeEnabled: Bool
-    var stripeByokEnabled: Bool
-    /// Per-provider capabilities (servers from 0.3.1 on); absent on older servers.
+    /// Every field is optional: the engine is versioned independently of the app, and a
+    /// missing key must degrade rather than fail the whole connection.
+    var localOnly: Bool?
     var providers: [String: ProviderInfo]?
     var tools: [String]?
+    var maxFileMB: Int?
 
     enum CodingKeys: String, CodingKey {
-        case disableAuth = "disable_auth"
-        case stripeEnabled = "stripe_enabled"
-        case stripeByokEnabled = "stripe_byok_enabled"
         case providers, tools
+        case localOnly = "local_only"
+        case maxFileMB = "max_file_mb"
     }
 
     func info(for provider: AIProvider) -> ProviderInfo? { providers?[provider.rawValue] }
@@ -23,13 +22,13 @@ struct ServerConfig: Decodable, Equatable {
 
 struct ProviderInfo: Decodable, Equatable {
     var available: Bool?
-    var serverKey: Bool?
+    var keyPresent: Bool?
     var models: [String]?
     var defaultModel: String?
 
     enum CodingKeys: String, CodingKey {
         case available, models
-        case serverKey = "server_key"
+        case keyPresent = "key_present"
         case defaultModel = "default_model"
     }
 }
@@ -132,10 +131,7 @@ struct APIErrorBody {
 enum CadvertError: LocalizedError, Equatable {
     case unauthorized(String)
     case fileLimit(String)
-    case byokRequired(String)
-    case byokKeyRequired(String)
-    case sessionLimit(String)
-    case serverKeyMissing(String)
+    case apiKeyRequired(String)
     case http(status: Int, message: String)
     case unsupportedFormat(String)
     case notConnected
@@ -145,8 +141,8 @@ enum CadvertError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .unauthorized(let m), .fileLimit(let m), .byokRequired(let m), .byokKeyRequired(let m),
-             .sessionLimit(let m), .serverKeyMissing(let m), .stream(let m), .engine(let m):
+        case .unauthorized(let m), .fileLimit(let m),
+             .apiKeyRequired(let m), .stream(let m), .engine(let m):
             return m
         case .http(_, let m): return m
         case .unsupportedFormat(let ext):
@@ -161,12 +157,9 @@ enum CadvertError: LocalizedError, Equatable {
         let body = APIErrorBody(data: data)
         let msg = body?.message ?? HTTPURLResponse.localizedString(forStatusCode: status)
         switch (status, body?.code) {
+        case (_, "api_key_required"):     return .apiKeyRequired(msg)
         case (401, _):                    return .unauthorized(msg)
-        case (429, "byok_required"):      return .byokRequired(msg)
-        case (429, "byok_key_required"):  return .byokKeyRequired(msg)
-        case (429, "session_limit"):      return .sessionLimit(msg)
         case (429, _):                    return .fileLimit(msg)
-        case (503, _):                    return .serverKeyMissing(msg)
         default:                          return .http(status: status, message: msg)
         }
     }

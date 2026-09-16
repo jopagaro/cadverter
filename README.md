@@ -96,7 +96,7 @@ Bbox: X[0,60]  Y[0,40]  Z[0,20]
 pip install cadvert[graph]   # networkx  → .to_graph()
 pip install cadvert[mesh]    # trimesh   → area-weighted .to_points(), OBJ
 pip install cadvert[dxf]     # ezdxf     → .dxf drawings
-pip install cadvert[server]  # FastAPI REST server + web UI
+pip install cadvert[server]  # local REST engine + web UI
 pip install cadvert[llm]     # OpenAI + Claude chat providers (server / desktop app)
 pip install cadvert[full]    # everything
 ```

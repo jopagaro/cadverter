@@ -26,7 +26,6 @@ final class AppSettings {
     var remoteURLString: String { didSet { defaults.set(remoteURLString, forKey: "remoteURL") } }
     var pythonPath: String { didSet { defaults.set(pythonPath, forKey: "pythonPath") } }
     var theme: ThemePreference { didSet { defaults.set(theme.rawValue, forKey: "theme") } }
-    var bearerToken: String { didSet { defaults.set(bearerToken, forKey: "bearerToken") } }
     var hasSeenWelcome: Bool { didSet { defaults.set(hasSeenWelcome, forKey: "hasSeenWelcome") } }
 
     /// Which AI answers questions: Apple's on-device model, OpenAI, or Claude.
@@ -49,7 +48,6 @@ final class AppSettings {
         remoteURLString = defaults.string(forKey: "remoteURL") ?? "http://localhost:8000"
         pythonPath      = defaults.string(forKey: "pythonPath") ?? ""
         theme           = ThemePreference(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
-        bearerToken     = defaults.string(forKey: "bearerToken") ?? ""
         hasSeenWelcome  = defaults.bool(forKey: "hasSeenWelcome")
         openAIModel     = defaults.string(forKey: "openAIModel") ?? defaults.string(forKey: "model") ?? ChatModel.defaultModel(for: .openai)
         anthropicModel  = defaults.string(forKey: "anthropicModel") ?? ChatModel.defaultModel(for: .anthropic)

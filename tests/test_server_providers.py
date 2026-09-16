@@ -48,6 +48,7 @@ def test_config_lists_providers_and_tools(client):
     assert cfg["providers"]["anthropic"]["default_model"] == "claude-opus-5"
     assert "get_feature" in cfg["tools"]
     assert isinstance(cfg["providers"]["anthropic"]["available"], bool)
+    assert cfg["local_only"] is True
 
 
 def test_tools_endpoint(client):
@@ -76,19 +77,41 @@ def test_tool_endpoint_routes_to_executor(client, monkeypatch):
     server._sessions.pop("t1", None)
 
 
-def test_chat_without_server_key_says_which_provider(client):
+def test_chat_without_a_key_asks_for_one(client):
+    """No accounts, no quotas — the only reason chat stops is a missing key."""
     server._sessions["c1"] = {"message_count": 0, "tier0": "PART: x", "is_mesh": False}
-    monkey_key = server.SERVER_ANTHROPIC_KEY
-    server.SERVER_ANTHROPIC_KEY = None
+    saved_openai, saved_anthropic = server.SERVER_OPENAI_KEY, server.SERVER_ANTHROPIC_KEY
+    server.SERVER_OPENAI_KEY = server.SERVER_ANTHROPIC_KEY = None
     try:
         r = client.post("/chat/c1", json={"messages": [{"role": "user", "content": "hi"}]},
                         headers={"X-Provider": "anthropic", "X-Model": "claude-opus-5"})
-        assert r.status_code in (500, 503)
-        if r.status_code == 503:
-            assert "Anthropic" in r.json()["detail"]
+        assert r.status_code == 400
+        detail = r.json()["detail"]
+        assert detail["error"] == "api_key_required"
+        assert detail["provider"] == "anthropic"
+        assert "Anthropic" in detail["message"]
+
+        # A key in the header is enough; no sign-in, no plan.
+        r = client.post("/chat/c1", json={"messages": [{"role": "user", "content": "hi"}]},
+                        headers={"X-Provider": "anthropic", "X-Anthropic-Key": "sk-ant-x"})
+        assert r.status_code == 200      # streams, then errors inside the stream on a bad key
     finally:
-        server.SERVER_ANTHROPIC_KEY = monkey_key
+        server.SERVER_OPENAI_KEY, server.SERVER_ANTHROPIC_KEY = saved_openai, saved_anthropic
         server._sessions.pop("c1", None)
+
+
+def test_config_reports_local_only(client):
+    cfg = client.get("/config").json()
+    assert cfg["local_only"] is True
+    assert set(cfg["providers"]) == {"openai", "anthropic"}
+    assert "max_file_mb" in cfg
+    # Nothing about accounts, plans or payment survives.
+    assert not any(k in cfg for k in ("disable_auth", "stripe_enabled", "stripe_byok_enabled"))
+
+
+def test_no_account_or_payment_routes_remain(client):
+    for path in ("/auth/verify", "/create-checkout", "/stripe-webhook"):
+        assert client.post(path, json={}).status_code == 404, f"{path} should be gone"
 
 
 # ── Anthropic stream translation, with a fake SDK (no network, no key) ─────────

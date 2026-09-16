@@ -14,7 +14,6 @@ import asyncio
 import json
 import os
 import shutil
-import sqlite3
 import tempfile
 import time
 import uuid
@@ -44,100 +43,23 @@ STATIC_DIR = Path(__file__).parent / "static"
 UPLOAD_DIR = Path(tempfile.gettempdir()) / "cadvert_sessions"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-# ── Auth ───────────────────────────────────────────────────────────────────────
-DISABLE_AUTH = os.environ.get("DISABLE_AUTH", "0") == "1"
-GOOGLE_CLIENT_ID = os.environ.get(
-    "GOOGLE_CLIENT_ID",
-    "257835361477-e8d4ebui9tm1pa6dssb5gguh7v1mjt0g.apps.googleusercontent.com",
-)
+# ── Limits ────────────────────────────────────────────────────────────────────
+# The engine runs on the machine that owns the file — there is no hosted service and
+# no accounts. These are sanity bounds, not a business model.
 
-# ── Stripe ────────────────────────────────────────────────────────────────────
-STRIPE_SECRET_KEY     = os.environ.get("STRIPE_SECRET_KEY", "")
-STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
-STRIPE_PRICE_ID       = os.environ.get("STRIPE_PRICE_ID", "")       # $9/month Pro
-STRIPE_BYOK_PRICE_ID  = os.environ.get("STRIPE_BYOK_PRICE_ID", "")  # $3/month BYOK
-TRIAL_DAYS            = 3
-TRIAL_AMOUNT_CENTS    = 100  # $1
-
-if STRIPE_SECRET_KEY:
-    try:
-        import stripe as _stripe
-        _stripe.api_key = STRIPE_SECRET_KEY
-    except ImportError:
-        pass
-
-# ── Safety check ──────────────────────────────────────────────────────────────
-_real_key = os.environ.get("OPENAI_API_KEY", "")
-if os.environ.get("DISABLE_AUTH", "0") == "1" and _real_key and not _real_key.startswith("sk-test"):
-    import warnings
-    warnings.warn(
-        "⚠️  DISABLE_AUTH=1 is set alongside a real OPENAI_API_KEY. "
-        "If this is a production server you will pay for ALL requests with no auth. "
-        "Set DISABLE_AUTH=0 or remove OPENAI_API_KEY.",
-        stacklevel=1,
-    )
-
-# ── Tier limits ───────────────────────────────────────────────────────────────
-
-# Server pays for this many messages per session (free tier), then BYOK wall
-FREE_MESSAGES_PER_SESSION = int(os.environ.get("FREE_MESSAGES_PER_SESSION", "3"))
-# Max files processed per user per day (resets at midnight)
-FREE_FILES_PER_DAY = int(os.environ.get("FREE_FILES_PER_DAY", "1"))
-# BYOK users cap (0 = unlimited)
-BYOK_MESSAGES_PER_SESSION = int(os.environ.get("BYOK_MESSAGES_PER_SESSION", "20"))
-# Hard daily message cap for paid tiers (stops scripted abuse — real users never hit this)
-PRO_MESSAGES_PER_DAY  = int(os.environ.get("PRO_MESSAGES_PER_DAY",  "200"))
-BYOK_MESSAGES_PER_DAY = int(os.environ.get("BYOK_MESSAGES_PER_DAY", "200"))
 # Max upload size
-MAX_FILE_MB = int(os.environ.get("MAX_FILE_MB", "50"))
+MAX_FILE_MB = int(os.environ.get("MAX_FILE_MB", "500"))
 # Max messages in chat history accepted from client
 MAX_HISTORY_MESSAGES = int(os.environ.get("MAX_HISTORY_MESSAGES", "30"))
 # Max length of a single user message
 MAX_MESSAGE_CHARS = int(os.environ.get("MAX_MESSAGE_CHARS", "4000"))
-# Allowed OpenAI models (prevents user from requesting expensive/unknown models)
+# Allowed OpenAI models (keeps a typo from reaching the API as a bill)
 ALLOWED_MODELS = {
     "gpt-4o-mini", "gpt-4o", "gpt-4.1", "gpt-4.1-mini", "gpt-5.4", "o4-mini",
 }
-# Server's own OpenAI key (pays for free + pro messages)
+# Keys come from the environment the app starts the engine with, or from a request
+# header. They are the user's own; nothing is billed centrally.
 SERVER_OPENAI_KEY: Optional[str] = os.environ.get("OPENAI_API_KEY")
-
-# ── SQLite users DB ────────────────────────────────────────────────────────────
-DB_PATH = Path(tempfile.gettempdir()) / "cadvert_users.db"
-
-
-def _init_db() -> None:
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            google_id              TEXT PRIMARY KEY,
-            email                  TEXT NOT NULL,
-            name                   TEXT,
-            picture                TEXT,
-            tier                   TEXT DEFAULT 'free',
-            stripe_customer_id     TEXT,
-            stripe_subscription_id TEXT,
-            files_today            INTEGER DEFAULT 0,
-            last_file_date         TEXT,
-            created_at             TEXT DEFAULT (date('now'))
-        )
-    """)
-    # Migrate existing DBs that lack the new columns
-    for col, definition in [
-        ("tier",                   "TEXT DEFAULT 'free'"),
-        ("stripe_customer_id",     "TEXT"),
-        ("stripe_subscription_id", "TEXT"),
-        ("messages_today",         "INTEGER DEFAULT 0"),
-        ("last_message_date",      "TEXT"),
-    ]:
-        try:
-            conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
-        except Exception:
-            pass
-    conn.commit()
-    conn.close()
-
-
-_init_db()
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
@@ -443,25 +365,25 @@ def _system_prompt(tier0: str) -> str:
 
 @app.get("/config")
 async def config():
+    """What this engine supports. No accounts, no plans — it runs locally."""
     return JSONResponse({
-        "disable_auth":        DISABLE_AUTH,
-        "stripe_enabled":      bool(STRIPE_SECRET_KEY and STRIPE_PRICE_ID),
-        "stripe_byok_enabled": bool(STRIPE_SECRET_KEY and STRIPE_BYOK_PRICE_ID),
+        "local_only": True,
         "providers": {
             "openai": {
                 "available":     _provider_available("openai"),
-                "server_key":    bool(SERVER_OPENAI_KEY),
+                "key_present":   bool(SERVER_OPENAI_KEY),
                 "models":        sorted(ALLOWED_MODELS),
                 "default_model": DEFAULT_OPENAI_MODEL,
             },
             "anthropic": {
                 "available":     _provider_available("anthropic"),
-                "server_key":    bool(SERVER_ANTHROPIC_KEY),
+                "key_present":   bool(SERVER_ANTHROPIC_KEY),
                 "models":        sorted(ALLOWED_ANTHROPIC_MODELS),
                 "default_model": DEFAULT_ANTHROPIC_MODEL,
             },
         },
         "tools": sorted(TOOL_NAMES),
+        "max_file_mb": MAX_FILE_MB,
     })
 
 
@@ -489,280 +411,12 @@ async def about():
     return HTMLResponse(html_path.read_text(encoding="utf-8"))
 
 
-def _verify_google_token(credential: str) -> dict:
-    """Verify a Google ID token (from GIS) and return the decoded payload."""
-    try:
-        from google.oauth2 import id_token as gid_token
-        from google.auth.transport import requests as grequests
-        payload = gid_token.verify_oauth2_token(
-            credential,
-            grequests.Request(),
-            GOOGLE_CLIENT_ID,
-        )
-        return payload
-    except Exception as exc:
-        raise HTTPException(status_code=401, detail=f"Invalid Google token: {exc}")
-
-
-def _get_current_user(authorization: Optional[str]) -> dict:
-    """Extract & verify Bearer token; return user dict with google_id, email, name, picture."""
-    if DISABLE_AUTH:
-        return {"sub": "dev", "email": "dev@local", "name": "Dev", "picture": ""}
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Login required")
-    token = authorization[len("Bearer "):]
-    return _verify_google_token(token)
-
-
-def _upsert_user(payload: dict) -> None:
-    """Create or update user row in SQLite from a verified token payload."""
-    google_id = payload["sub"]
-    email     = payload.get("email", "")
-    name      = payload.get("name", "")
-    picture   = payload.get("picture", "")
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.execute(
-        """INSERT INTO users (google_id, email, name, picture)
-           VALUES (?, ?, ?, ?)
-           ON CONFLICT(google_id) DO UPDATE SET
-               email   = excluded.email,
-               name    = excluded.name,
-               picture = excluded.picture""",
-        (google_id, email, name, picture),
-    )
-    conn.commit()
-    conn.close()
-
-
-def _check_file_limit_user(google_id: str) -> None:
-    """Raise 429 if this user has already used their daily file quota, else increment."""
-    today = date.today().isoformat()
-    conn = sqlite3.connect(str(DB_PATH))
-    try:
-        row = conn.execute(
-            "SELECT files_today, last_file_date FROM users WHERE google_id = ?",
-            (google_id,),
-        ).fetchone()
-        if row is None:
-            raise HTTPException(status_code=401, detail="User not found — please sign in again")
-        files_today, last_file_date = row
-        if last_file_date != today:
-            files_today = 0
-        if files_today >= FREE_FILES_PER_DAY:
-            raise HTTPException(
-                status_code=429,
-                detail={
-                    "error": "file_limit",
-                    "message": f"You've used your {FREE_FILES_PER_DAY} free file(s) today.",
-                    "reset": "Resets at midnight. Get the desktop app for unlimited.",
-                },
-            )
-        conn.execute(
-            "UPDATE users SET files_today = ?, last_file_date = ? WHERE google_id = ?",
-            (files_today + 1, today, google_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def _check_daily_message_limit(google_id: str, tier: str) -> None:
-    """Hard daily cap for paid users — stops scripted abuse."""
-    limit = PRO_MESSAGES_PER_DAY if tier == "pro" else BYOK_MESSAGES_PER_DAY
-    if limit == 0:
-        return
-    today = date.today().isoformat()
-    conn = sqlite3.connect(str(DB_PATH))
-    try:
-        row = conn.execute(
-            "SELECT messages_today, last_message_date FROM users WHERE google_id = ?",
-            (google_id,),
-        ).fetchone()
-        if not row:
-            return
-        msgs_today, last_msg_date = row
-        if last_msg_date != today:
-            msgs_today = 0
-        if msgs_today >= limit:
-            raise HTTPException(
-                status_code=429,
-                detail={
-                    "error": "daily_limit",
-                    "message": f"Daily message limit ({limit}) reached. Resets at midnight.",
-                },
-            )
-        conn.execute(
-            "UPDATE users SET messages_today = ?, last_message_date = ? WHERE google_id = ?",
-            (msgs_today + 1, today, google_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def _get_user_tier(google_id: str) -> str:
-    """Return 'pro' or 'free' for a user."""
-    conn = sqlite3.connect(str(DB_PATH))
-    row = conn.execute("SELECT tier FROM users WHERE google_id = ?", (google_id,)).fetchone()
-    conn.close()
-    return (row[0] or "free") if row else "free"
-
-
-def _set_user_tier_by_customer(customer_id: str, tier: str, subscription_id: Optional[str]) -> None:
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.execute(
-        "UPDATE users SET tier = ?, stripe_subscription_id = ? WHERE stripe_customer_id = ?",
-        (tier, subscription_id, customer_id),
-    )
-    conn.commit()
-    conn.close()
-
-
-@app.post("/auth/verify")
-async def auth_verify(request: Request):
-    """Verify a Google credential and upsert the user. Returns user info."""
-    body = await request.json()
-    credential = body.get("credential", "")
-    if not credential:
-        raise HTTPException(status_code=400, detail="credential required")
-    payload = _verify_google_token(credential)
-    _upsert_user(payload)
-    tier = _get_user_tier(payload["sub"])
-    return JSONResponse({
-        "google_id": payload["sub"],
-        "email":     payload.get("email", ""),
-        "name":      payload.get("name", ""),
-        "picture":   payload.get("picture", ""),
-        "tier":      tier,
-    })
-
-
-@app.post("/create-checkout")
-async def create_checkout(
-    request: Request,
-    authorization: Optional[str] = Header(default=None, alias="Authorization"),
-):
-    """Create a Stripe Checkout session. plan: 'pro' ($9/mo) or 'byok' ($3/mo)."""
-    if not STRIPE_SECRET_KEY:
-        raise HTTPException(status_code=503, detail="Payments not configured")
-    import stripe as _stripe
-
-    user = _get_current_user(authorization)
-    google_id = user["sub"]
-
-    body = await request.json()
-    origin = body.get("origin", "http://localhost:8080")
-    plan   = body.get("plan", "pro")  # 'pro' or 'byok'
-
-    price_id = STRIPE_BYOK_PRICE_ID if plan == "byok" else STRIPE_PRICE_ID
-    if not price_id:
-        raise HTTPException(status_code=503, detail=f"Stripe price not configured for plan: {plan}")
-
-    plan_name = "CADVERT BYOK" if plan == "byok" else "CADVERT Pro"
-
-    # Get or create Stripe customer
-    conn = sqlite3.connect(str(DB_PATH))
-    row = conn.execute(
-        "SELECT stripe_customer_id FROM users WHERE google_id = ?", (google_id,)
-    ).fetchone()
-    conn.close()
-    customer_id = row[0] if row and row[0] else None
-
-    if not customer_id:
-        customer = _stripe.Customer.create(
-            email=user.get("email", ""),
-            metadata={"google_id": google_id},
-        )
-        customer_id = customer.id
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.execute(
-            "UPDATE users SET stripe_customer_id = ? WHERE google_id = ?",
-            (customer_id, google_id),
-        )
-        conn.commit()
-        conn.close()
-
-    session = _stripe.checkout.Session.create(
-        customer=customer_id,
-        mode="subscription",
-        payment_method_types=["card"],
-        line_items=[{"price": price_id, "quantity": 1}],
-        subscription_data={
-            "trial_period_days": TRIAL_DAYS,
-            "metadata": {"plan": plan},
-            "add_invoice_items": [{
-                "price_data": {
-                    "currency": "usd",
-                    "product_data": {"name": f"{plan_name} — 3-day trial"},
-                    "unit_amount": TRIAL_AMOUNT_CENTS,
-                },
-            }],
-        },
-        success_url=f"{origin}?upgraded={plan}",
-        cancel_url=f"{origin}?upgraded=0",
-    )
-    return JSONResponse({"checkout_url": session.url})
-
-
-@app.post("/stripe-webhook")
-async def stripe_webhook(request: Request):
-    """Handle Stripe webhook events to update user tiers."""
-    if not STRIPE_WEBHOOK_SECRET:
-        raise HTTPException(status_code=503, detail="Webhook secret not configured")
-    import stripe as _stripe
-    payload = await request.body()
-    sig = request.headers.get("stripe-signature", "")
-    try:
-        event = _stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-    etype = event["type"]
-    data  = event["data"]["object"]
-
-    if etype == "checkout.session.completed":
-        sub_id = data.get("subscription")
-        # Retrieve subscription to read the plan metadata
-        plan = "pro"
-        if sub_id:
-            try:
-                sub = _stripe.Subscription.retrieve(sub_id)
-                plan = sub.get("metadata", {}).get("plan", "pro")
-            except Exception:
-                pass
-        tier = "byok" if plan == "byok" else "pro"
-        _set_user_tier_by_customer(data["customer"], tier, sub_id)
-
-    elif etype in ("customer.subscription.deleted", "customer.subscription.paused"):
-        _set_user_tier_by_customer(data["customer"], "free", None)
-
-    elif etype == "customer.subscription.updated":
-        status = data.get("status", "")
-        if status in ("active", "trialing"):
-            plan = data.get("metadata", {}).get("plan", "pro")
-            tier = "byok" if plan == "byok" else "pro"
-        else:
-            tier = "free"
-        _set_user_tier_by_customer(data["customer"], tier, data.get("id"))
-
-    elif etype == "invoice.payment_failed":
-        # Grace — don't downgrade immediately, Stripe will retry
-        pass
-
-    return JSONResponse({"ok": True})
-
-
 @app.post("/convert")
 async def convert(
     request: Request,
     file: UploadFile = File(...),
-    authorization: Optional[str] = Header(default=None, alias="Authorization"),
 ):
     """Upload a CAD file and run the full CADVERT pipeline."""
-    user = _get_current_user(authorization)
-    if not DISABLE_AUTH:
-        _check_file_limit_user(user["sub"])
-
     session_id = str(uuid.uuid4())
     session_dir = UPLOAD_DIR / session_id
     session_dir.mkdir(parents=True)
@@ -816,101 +470,48 @@ async def convert(
 async def chat(
     session_id: str,
     request: Request,
-    authorization: Optional[str] = Header(default=None, alias="Authorization"),
     x_openai_key: Optional[str] = Header(default=None, alias="X-OpenAI-Key"),
     x_anthropic_key: Optional[str] = Header(default=None, alias="X-Anthropic-Key"),
     x_provider: Optional[str] = Header(default=None, alias="X-Provider"),
-    x_model: str = Header(default="gpt-4o", alias="X-Model"),
+    x_model: str = Header(default="gpt-4o-mini", alias="X-Model"),
 ):
     """Stream an LLM chat response using Tier 0 context + tool calling.
 
-    Body JSON: { "messages": [{role, content}, ...] }
+    Body JSON: ``{"messages": [{role, content}, ...]}``
 
-    Providers:
-      - X-Provider: openai (default) | anthropic — inferred from a `claude-*` X-Model if absent
-      - BYOK key header: X-OpenAI-Key or X-Anthropic-Key
-      - Server keys: OPENAI_API_KEY / ANTHROPIC_API_KEY
-
-    Tiering:
-      - First FREE_MESSAGES_PER_SESSION messages: server key, no BYOK header needed
-      - After that: BYOK header required, up to BYOK_MESSAGES_PER_SESSION
+    The key is the caller's own: sent per-request in ``X-OpenAI-Key`` /
+    ``X-Anthropic-Key``, or taken from the environment the engine was started with.
+    There are no accounts, plans or quotas — the engine runs on the machine that owns
+    the file, and any API spend is the user's own.
     """
     provider, model = _resolve_provider(x_provider, x_model)
-    server_key = SERVER_ANTHROPIC_KEY if provider == "anthropic" else SERVER_OPENAI_KEY
-    user_key   = x_anthropic_key if provider == "anthropic" else x_openai_key
-    key_label  = "Anthropic" if provider == "anthropic" else "OpenAI"
+    env_key   = SERVER_ANTHROPIC_KEY if provider == "anthropic" else SERVER_OPENAI_KEY
+    header_key = x_anthropic_key if provider == "anthropic" else x_openai_key
+    vendor    = "Anthropic" if provider == "anthropic" else "OpenAI"
 
     if not _provider_available(provider):
         raise HTTPException(
             status_code=500,
-            detail=f"{provider} package not installed on the server — pip install cadvert[llm]",
+            detail=f"The {vendor} SDK is not installed in this engine — pip install cadvert[llm]",
         )
 
-    user = None if DISABLE_AUTH else _get_current_user(authorization)
-    user_tier = "pro" if DISABLE_AUTH else _get_user_tier(user["sub"])
+    api_key = (header_key or "").strip() or env_key
+    if not api_key:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "api_key_required",
+                "provider": provider,
+                "message": f"Add your {vendor} API key to ask questions about this part.",
+            },
+        )
 
     session = _sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found or expired")
 
-    msg_count = session.get("message_count", 0)
-
-    # Decide which key to use based on tier
-    if user_tier == "pro":
-        # Pro: server pays, no cap
-        if not server_key:
-            raise HTTPException(status_code=503, detail=f"Server {key_label} API key not configured.")
-        api_key = server_key
-    elif user_tier == "byok":
-        # BYOK paid tier: their key required, but no message cap
-        if not user_key:
-            raise HTTPException(
-                status_code=429,
-                detail={
-                    "error": "byok_key_required",
-                    "message": f"Enter your {key_label} API key to continue (included in your BYOK plan).",
-                },
-            )
-        api_key = user_key
-    elif msg_count < FREE_MESSAGES_PER_SESSION:
-        # Free tier: server pays first N messages
-        if not server_key:
-            raise HTTPException(
-                status_code=503,
-                detail=f"Server {key_label} API key not configured. Please provide your own {key_label} key.",
-            )
-        api_key = server_key
-    else:
-        # Free tier exhausted — show upgrade wall
-        if not user_key:
-            raise HTTPException(
-                status_code=429,
-                detail={
-                    "error": "byok_required",
-                    "message": "You've used your 3 free messages. Upgrade to continue.",
-                    "messages_used": msg_count,
-                },
-            )
-        api_key = user_key
-        # Cap BYOK sessions too
-        if BYOK_MESSAGES_PER_SESSION > 0 and msg_count >= FREE_MESSAGES_PER_SESSION + BYOK_MESSAGES_PER_SESSION:
-            raise HTTPException(
-                status_code=429,
-                detail={
-                    "error": "session_limit",
-                    "message": "Session message limit reached. Start a new session by uploading a file.",
-                    "messages_used": msg_count,
-                },
-            )
-
-    # Daily message cap for paid tiers (stops scripted abuse)
-    if not DISABLE_AUTH and user and user_tier in ("pro", "byok"):
-        _check_daily_message_limit(user["sub"], user_tier)
-
     body = await request.json()
     user_messages: list[dict] = body.get("messages", [])
-
-    # Cap history length and individual message size
     user_messages = user_messages[-MAX_HISTORY_MESSAGES:]
     for msg in user_messages:
         if isinstance(msg.get("content"), str) and len(msg["content"]) > MAX_MESSAGE_CHARS:
@@ -919,9 +520,7 @@ async def chat(
                 detail=f"Message too long — maximum {MAX_MESSAGE_CHARS} characters.",
             )
 
-    # Increment before the call so concurrent requests don't double-dip free quota
-    session["message_count"] = msg_count + 1
-
+    session["message_count"] = session.get("message_count", 0) + 1
     tier0      = session.get("tier0") or session.get("hsd", "")
     system_msg = _system_prompt(tier0)
     use_tools  = not session.get("is_mesh", False)
@@ -1146,7 +745,6 @@ async def _stream_anthropic(api_key: str, model: str, system_msg: str, user_mess
 async def call_tool(
     session_id: str,
     request: Request,
-    authorization: Optional[str] = Header(default=None, alias="Authorization"),
 ):
     """Run one geometry tool directly and return its JSON result.
 
@@ -1154,8 +752,6 @@ async def call_tool(
     on-device model — so the model's tool calls hit the same exact-geometry code as
     the hosted providers. Body: {"name": "get_feature", "arguments": {"feature_id": "hole_1"}}
     """
-    if not DISABLE_AUTH:
-        _get_current_user(authorization)
     session = _sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found or expired")

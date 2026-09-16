@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Removed
+
+- **Accounts, plans and payment.** cadvert is a local engine: it runs on the machine that
+  owns the file. Stripe checkout and webhooks, Google sign-in, the user database, tier
+  logic, per-user file and message quotas and the upgrade walls are all gone, along with
+  the `/auth/verify`, `/create-checkout` and `/stripe-webhook` endpoints. `server.py` lost
+  about 400 lines.
+- Chat now has one rule: the key is the caller's own, from `X-OpenAI-Key` /
+  `X-Anthropic-Key` or from the environment the engine was started with. Without one the
+  server returns a plain `api_key_required` instead of a sales wall.
+- `/config` reports `local_only`, the available providers and the file cap. It no longer
+  reports auth or payment state.
+
 ### Added
 
 - **Assembly structure.** STEP files are now read with OpenCASCADE's XDE reader, which

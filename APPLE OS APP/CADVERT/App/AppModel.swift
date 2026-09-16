@@ -19,14 +19,8 @@ struct Toast: Equatable {
 }
 
 enum AppSheet: String, Identifiable {
-    case hsd, about, developers, settings, byokWall, byokKeyOnly, fileLimit, keyNeeded, signIn, engineLog
+    case hsd, about, developers, settings, keyNeeded, engineLog
     var id: String { rawValue }
-}
-
-struct FreeCounter: Equatable {
-    enum Level { case normal, warn, gone }
-    var text: String
-    var level: Level
 }
 
 /// Central application state. Mirrors the globals + handlers in `index.html`
@@ -80,18 +74,6 @@ final class AppModel {
     // MARK: - Derived state
 
     var canChat: Bool { session != nil && !streaming && connection.isReady }
-
-    /// The web header's "N free messages left" badge — only meaningful on servers with sign-in.
-    var freeCounter: FreeCounter? {
-        guard session != nil, let cfg = serverConfig, !cfg.disableAuth, settings.provider.needsKey else { return nil }
-        if settings.currentKey != nil { return FreeCounter(text: "Using your API key", level: .normal) }
-        let remaining = max(0, 3 - messagesSent)
-        switch remaining {
-        case 0:  return FreeCounter(text: "0 free messages left", level: .gone)
-        case 1:  return FreeCounter(text: "1 free message left", level: .warn)
-        default: return FreeCounter(text: "\(remaining) free messages left", level: .normal)
-        }
-    }
 
     enum StatusTone { case ok, busy, bad, off }
 
@@ -174,7 +156,7 @@ final class AppModel {
                 return
             }
             connection = .connecting("Connecting to \(url.host ?? url.absoluteString)…")
-            let c = CadvertClient(baseURL: url, bearerToken: settings.bearerToken.isEmpty ? nil : settings.bearerToken)
+            let c = CadvertClient(baseURL: url)
             do {
                 let cfg = try await c.fetchConfig()
                 guard !Task.isCancelled else { return }
@@ -302,8 +284,6 @@ final class AppModel {
         } catch let e as CadvertError {
             processing = nil
             switch e {
-            case .fileLimit:    sheet = .fileLimit
-            case .unauthorized: sheet = .signIn
             default:            showToast(e.localizedDescription)
             }
         } catch {
@@ -424,14 +404,8 @@ final class AppModel {
             if full.isEmpty { remove(typingId) }
         } catch let e as CadvertError {
             switch e {
-            case .byokRequired:
-                remove(typingId); remove(userId); pendingMessage = text; sheet = .byokWall
-            case .byokKeyRequired:
-                remove(typingId); remove(userId); pendingMessage = text; sheet = .byokKeyOnly
-            case .serverKeyMissing:
+            case .apiKeyRequired:
                 remove(typingId); remove(userId); pendingMessage = text; sheet = .keyNeeded
-            case .unauthorized:
-                remove(typingId); remove(userId); showToast("Session expired — please sign in again"); sheet = .signIn
             default:
                 failMessage(userId: userId, typingId: typingId, message: e.localizedDescription)
             }

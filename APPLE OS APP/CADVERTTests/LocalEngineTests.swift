@@ -39,7 +39,7 @@ final class LocalEngineTests: XCTestCase {
 
         let client = CadvertClient(baseURL: base)
         let cfg = try await client.fetchConfig()
-        XCTAssertTrue(cfg.disableAuth, "local engine must run with DISABLE_AUTH=1")
+        XCTAssertEqual(cfg.localOnly, true, "the bundled engine is local-only")
 
         // Full pipeline on the sample part, exactly what the UI does on drop.
         let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

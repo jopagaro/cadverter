@@ -52,27 +52,27 @@ final class ModelsDecodingTests: XCTestCase {
 
     func testServerConfigDecodes() throws {
         let cfg = try JSONDecoder().decode(ServerConfig.self,
-            from: Data(#"{"disable_auth": true, "stripe_enabled": false, "stripe_byok_enabled": false}"#.utf8))
-        XCTAssertTrue(cfg.disableAuth)
-        XCTAssertFalse(cfg.stripeEnabled)
+            from: Data(#"{"local_only": true, "max_file_mb": 500}"#.utf8))
+        XCTAssertEqual(cfg.localOnly, true)
+        XCTAssertEqual(cfg.maxFileMB, 500)
+    }
+
+    func testServerConfigToleratesMissingFields() throws {
+        // The engine ships separately from the app; an unknown or older /config must
+        // still connect rather than failing to decode.
+        let cfg = try JSONDecoder().decode(ServerConfig.self, from: Data("{}".utf8))
+        XCTAssertNil(cfg.localOnly)
+        XCTAssertNil(cfg.providers)
     }
 
     func testErrorMapping() {
         let plain = Data(#"{"detail": "File too large"}"#.utf8)
         XCTAssertEqual(CadvertError.from(status: 413, data: plain), .http(status: 413, message: "File too large"))
 
-        let byok = Data(#"{"detail": {"error": "byok_required", "message": "Upgrade to continue.", "messages_used": 3}}"#.utf8)
-        XCTAssertEqual(CadvertError.from(status: 429, data: byok), .byokRequired("Upgrade to continue."))
-
-        let keyOnly = Data(#"{"detail": {"error": "byok_key_required", "message": "Enter your key"}}"#.utf8)
-        XCTAssertEqual(CadvertError.from(status: 429, data: keyOnly), .byokKeyRequired("Enter your key"))
-
-        let fileLimit = Data(#"{"detail": {"error": "file_limit", "message": "Daily limit"}}"#.utf8)
-        XCTAssertEqual(CadvertError.from(status: 429, data: fileLimit), .fileLimit("Daily limit"))
+        let needsKey = Data(#"{"detail": {"error": "api_key_required", "provider": "anthropic", "message": "Add your Anthropic API key"}}"#.utf8)
+        XCTAssertEqual(CadvertError.from(status: 400, data: needsKey), .apiKeyRequired("Add your Anthropic API key"))
 
         XCTAssertEqual(CadvertError.from(status: 401, data: Data()), .unauthorized("unauthorized"))
-        XCTAssertEqual(CadvertError.from(status: 503, data: Data(#"{"detail": "Server API key not configured."}"#.utf8)),
-                       .serverKeyMissing("Server API key not configured."))
     }
 
     func testSupportedFormats() {

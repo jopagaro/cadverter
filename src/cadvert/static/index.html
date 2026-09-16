@@ -6,7 +6,6 @@
   <title>CADVERT</title>
   <link rel="preconnect" href="https://fonts.cdnfonts.com">
   <link href="https://fonts.cdnfonts.com/css/satoshi" rel="stylesheet">
-  <script src="https://accounts.google.com/gsi/client" async defer onload="if(typeof _renderGisButton==='function')_renderGisButton()"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1058,85 +1057,6 @@
     .free-counter.gone { color: var(--danger); border-color: rgba(220,53,69,0.2); }
 
     /* ── Sign-in overlay ── */
-    .signin-overlay {
-      position: fixed;
-      inset: 0;
-      background: var(--bg);
-      z-index: 2000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: opacity 300ms;
-    }
-    .signin-overlay.hidden {
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    .signin-box {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 48px 48px 40px;
-      text-align: center;
-      width: min(90vw, 380px);
-    }
-
-    .signin-logo-wrap {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      margin-bottom: 28px;
-    }
-
-    .signin-logo-mark {
-      width: 32px;
-      height: 32px;
-      border-radius: 9px;
-      background: var(--logo-bg);
-      color: #fff;
-      font-size: 15px;
-      font-weight: 800;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .signin-logo-text {
-      font-size: 20px;
-      font-weight: 700;
-      letter-spacing: -0.4px;
-      color: var(--text);
-    }
-
-    .signin-title {
-      font-size: 17px;
-      font-weight: 700;
-      color: var(--text);
-      margin-bottom: 8px;
-    }
-
-    .signin-sub {
-      font-size: 13px;
-      color: var(--text-muted);
-      line-height: 1.6;
-      margin-bottom: 28px;
-    }
-
-    .signin-btn-wrap {
-      display: flex;
-      justify-content: center;
-      margin-bottom: 18px;
-      min-height: 44px;
-    }
-
-    .signin-footer {
-      font-size: 11px;
-      color: var(--text-dim);
-      line-height: 1.5;
-    }
-
     /* ── User pill in header ── */
     .user-pill {
       display: flex;
@@ -1196,20 +1116,15 @@
     <button class="theme-pill" id="pill-dark" onclick="setTheme('dark')">Dark</button>
   </div>
 
-  <!-- User pill (shown after login) -->
-  <div class="user-pill" id="userPill" style="display:none">
-    <img class="user-avatar" id="userAvatar" src="" alt="" onerror="this.style.display='none';document.getElementById('userAvatarFallback').style.display='flex'">
-    <div class="user-avatar-fallback" id="userAvatarFallback" style="display:none"></div>
-    <span class="user-name" id="userNameEl"></span>
-    <span class="free-counter" id="freeCounter" style="display:none">3 free messages left</span>
-    <!-- API key row — hidden until BYOK wall is hit -->
-    <div id="apiKeyRow" style="display:none;align-items:center;gap:6px">
-      <label for="apiKeyInput" style="color:var(--text-muted);font-size:11px;white-space:nowrap">Your API key</label>
-      <input type="password" id="apiKeyInput" placeholder="sk-… (OpenAI) or sk-ant-… (Anthropic)" autocomplete="off"
-        style="width:160px;background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:5px 9px;font-size:11px;font-family:var(--mono);outline:none;">
-      <button class="btn btn-ghost" onclick="saveKey()">Save</button>
-    </div>
-    <select id="modelSelect" style="display:none">
+  <!-- Key + model. The key is yours and is sent straight to the provider. -->
+  <div class="key-row" id="keyRow">
+    <label for="apiKeyInput">API key</label>
+    <input type="password" id="apiKeyInput" placeholder="sk-… or sk-ant-…" autocomplete="off">
+    <button class="btn btn-ghost" onclick="saveKey()">Save</button>
+    <select id="modelSelect">
+      <optgroup label="Apple / on-device">
+        <option value="" disabled>— use the Mac app for on-device —</option>
+      </optgroup>
       <optgroup label="OpenAI">
         <option value="gpt-4o-mini">GPT-4o mini</option>
         <option value="gpt-4o">GPT-4o</option>
@@ -1226,7 +1141,6 @@
         <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
       </optgroup>
     </select>
-    <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;white-space:nowrap" onclick="signOut()">Sign out</button>
   </div>
 </header>
 
@@ -1323,65 +1237,6 @@
 <!-- Error toast -->
 <div class="error-toast" id="errorToast"></div>
 
-<!-- BYOK wall modal -->
-<div class="wall-modal" id="byokModal">
-  <div class="wall-box">
-    <div class="wall-icon">🔑</div>
-    <div class="wall-title">You've used your 3 free messages</div>
-    <div class="wall-sub">Choose a plan to keep going. Cancel anytime.</div>
-
-    <!-- Two-tier cards -->
-    <div style="display:flex;gap:10px;margin-bottom:16px;">
-      <div style="flex:1;border:1px solid var(--border);border-radius:10px;padding:14px;text-align:left;cursor:pointer;transition:border-color 150ms;" onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor='var(--border)'">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:4px;">BYOK</div>
-        <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px;">$3<span style="font-size:11px;font-weight:500;color:var(--text-muted)">/mo</span></div>
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.5;">Use your own OpenAI or Anthropic key. You cover AI costs.</div>
-        <button class="wall-cta" style="margin-bottom:0;font-size:12px;padding:8px;" onclick="upgradeCheckout('byok')">Start $1 trial</button>
-      </div>
-      <div style="flex:1;border:2px solid var(--accent);border-radius:10px;padding:14px;text-align:left;cursor:pointer;position:relative;">
-        <div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;white-space:nowrap;">RECOMMENDED</div>
-        <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:4px;">PRO</div>
-        <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px;">$9<span style="font-size:11px;font-weight:500;color:var(--text-muted)">/mo</span></div>
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.5;">We cover all AI costs. No key needed.</div>
-        <button class="wall-cta" style="margin-bottom:0;font-size:12px;padding:8px;" onclick="upgradeCheckout('pro')">Start $1 trial</button>
-      </div>
-    </div>
-
-    <div class="wall-divider">already on BYOK? enter your key</div>
-    <div class="wall-input-row">
-      <input type="password" id="byokKeyInput" placeholder="sk-..." autocomplete="off">
-      <button class="btn btn-primary" onclick="submitByokKey()" style="padding:8px 14px;font-size:12px;">Continue</button>
-    </div>
-    <div class="wall-tomorrow">Come back tomorrow for 3 more free messages.</div>
-  </div>
-</div>
-
-<!-- BYOK key-only modal (for paid BYOK users who haven't entered their key yet) -->
-<div class="wall-modal" id="byokKeyModal">
-  <div class="wall-box">
-    <div class="wall-icon">🔑</div>
-    <div class="wall-title">Enter your API key</div>
-    <div class="wall-sub">You're on the BYOK plan — paste your OpenAI or Anthropic key below. It's sent directly to the provider and never stored on our server.</div>
-    <div class="wall-input-row">
-      <input type="password" id="byokKeyInput2" placeholder="sk-..." autocomplete="off">
-      <button class="btn btn-primary" onclick="submitByokKeyOnly()" style="padding:8px 14px;font-size:12px;">Continue</button>
-    </div>
-  </div>
-</div>
-
-<!-- File limit modal -->
-<div class="wall-modal" id="fileLimitModal">
-  <div class="wall-box">
-    <div class="wall-icon">📁</div>
-    <div class="wall-title">Daily file limit reached</div>
-    <div class="wall-sub">You've used your free file for today. Limits reset at midnight.<br>The desktop app gives you unlimited files and full analysis, offline.</div>
-    <a class="wall-cta" href="#" target="_blank">Get the Desktop App — $20</a>
-    <div class="wall-tomorrow" style="margin-top:12px;">
-      <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="closeFileLimitModal()">Dismiss — come back tomorrow</span>
-    </div>
-  </div>
-</div>
-
 <!-- Processing overlay -->
 <div class="processing-overlay" id="processingOverlay">
   <div class="processing-box">
@@ -1396,274 +1251,36 @@
   </div>
 </div>
 
-<!-- Sign-in overlay -->
-<div class="signin-overlay" id="signinOverlay">
-  <div class="signin-box">
-    <div class="signin-logo-wrap">
-      <div class="signin-logo-mark">C</div>
-      <div class="signin-logo-text">CADVERT</div>
-    </div>
-    <div class="signin-title">CAD geometry analysis</div>
-    <div class="signin-sub">Sign in to upload your CAD files and start analysing geometry with AI.</div>
-    <div class="signin-btn-wrap" id="signinBtnWrap"></div>
-    <div class="signin-footer">Free · 1 file per day · No credit card needed</div>
-  </div>
-</div>
-
 <script>
 // ── State ────────────────────────────────────────────────────────────────────
 let sessionId = null;
 let hsdText = '';
 let chatHistory = [];
 let streaming = false;
-let messagesSent = 0;          // tracked client-side for counter display
-const FREE_MSGS = 3;           // must match server FREE_MESSAGES_PER_SESSION
-let byokKey = null;            // set after user enters key in BYOK modal
-let googleToken = sessionStorage.getItem('cadvert_token') || null;
-let currentUser = JSON.parse(sessionStorage.getItem('cadvert_user') || 'null');
-
-// ── Google Auth ──────────────────────────────────────────────────────────────
-const GOOGLE_CLIENT_ID = '257835361477-e8d4ebui9tm1pa6dssb5gguh7v1mjt0g.apps.googleusercontent.com';
-let STRIPE_ENABLED = false; // set from /config on load
-
-function onGoogleSignIn(response) {
-  googleToken = response.credential;
-  fetch('/auth/verify', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ credential: googleToken }),
-  })
-    .then(r => r.ok ? r.json() : Promise.reject(r))
-    .then(user => {
-      currentUser = user;
-      sessionStorage.setItem('cadvert_token', googleToken);
-      sessionStorage.setItem('cadvert_user', JSON.stringify(user));
-      _showLoggedIn();
-    })
-    .catch(err => {
-      console.error('Auth failed', err);
-      showToast('Sign-in failed — please try again');
-      googleToken = null; currentUser = null;
-      sessionStorage.removeItem('cadvert_token');
-      sessionStorage.removeItem('cadvert_user');
-    });
-}
-
-function _showLoggedIn() {
-  // Hide sign-in overlay
-  const overlay = document.getElementById('signinOverlay');
-  overlay.classList.add('hidden');
-  setTimeout(() => overlay.style.display = 'none', 310);
-
-  // Show user pill
-  const pill = document.getElementById('userPill');
-  pill.style.display = 'flex';
-
-  const avatar = document.getElementById('userAvatar');
-  const fallback = document.getElementById('userAvatarFallback');
-  if (currentUser.picture) {
-    avatar.src = currentUser.picture;
-    avatar.style.display = '';
-  } else {
-    avatar.style.display = 'none';
-    fallback.style.display = 'flex';
-    fallback.textContent = (currentUser.name || currentUser.email || 'U')[0].toUpperCase();
-  }
-  document.getElementById('userNameEl').textContent = (currentUser.name || currentUser.email || '').split(' ')[0];
-  _updateTierBadge();
-}
-
-function upgradeCheckout(plan) {
-  const enabled = plan === 'byok' ? window.STRIPE_BYOK_ENABLED : STRIPE_ENABLED;
-  if (!enabled) { showToast('Payments not configured yet'); return; }
-  const origin = window.location.origin;
-  fetch('/create-checkout', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(googleToken ? { 'Authorization': `Bearer ${googleToken}` } : {}),
-    },
-    body: JSON.stringify({ origin, plan }),
-  })
-    .then(r => r.ok ? r.json() : Promise.reject(r))
-    .then(data => { window.location.href = data.checkout_url; })
-    .catch(() => showToast('Could not start checkout — try again'));
-}
-
-function openByokKeyModal() {
-  document.getElementById('byokKeyModal').classList.add('open');
-  setTimeout(() => document.getElementById('byokKeyInput2').focus(), 50);
-}
-
-function submitByokKeyOnly() {
-  const key = document.getElementById('byokKeyInput2').value.trim();
-  if (!key.startsWith('sk-')) { showToast('Enter a valid API key (starts with sk-)'); return; }
-  byokKey = key;
-  localStorage.setItem('cadvert_api_key', key);
-  document.getElementById('apiKeyInput').value = key;
-  const row = document.getElementById('apiKeyRow');
-  row.style.display = 'flex';
-  document.getElementById('modelSelect').style.display = '';
-  document.getElementById('byokKeyModal').classList.remove('open');
-  updateFreeCounter();
-  showToast('Key saved — sending your message', 'success');
-  if (_pendingMessage) { const m = _pendingMessage; _pendingMessage = null; _sendText(m); }
-}
-
-function signOut() {
-  googleToken = null;
-  currentUser = null;
-  sessionStorage.removeItem('cadvert_token');
-  sessionStorage.removeItem('cadvert_user');
-  // Hide user pill
-  document.getElementById('userPill').style.display = 'none';
-  // Reset session
-  sessionId = null;
-  hsdText = '';
-  chatHistory = [];
-  messagesSent = 0;
-  document.getElementById('viewsStrip').innerHTML = '';
-  document.getElementById('messages').innerHTML = '';
-  document.getElementById('messages').appendChild(createEmptyState());
-  document.getElementById('infoCard').classList.remove('visible');
-  document.getElementById('chatInput').disabled = true;
-  document.getElementById('sendBtn').disabled = true;
-  // Show sign-in overlay again
-  const overlay = document.getElementById('signinOverlay');
-  overlay.style.display = 'flex';
-  overlay.classList.remove('hidden');
-  // Re-render GIS button
-  _renderGisButton();
-}
-
-function _renderGisButton() {
-  if (typeof google === 'undefined') return;
-  const wrap = document.getElementById('signinBtnWrap');
-  wrap.innerHTML = '';
-  google.accounts.id.initialize({
-    client_id: GOOGLE_CLIENT_ID,
-    callback: onGoogleSignIn,
-    auto_select: false,
-    cancel_on_tap_outside: false,
-  });
-  google.accounts.id.renderButton(wrap, {
-    theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'filled_black' : 'outline',
-    size: 'large',
-    text: 'signin_with',
-    shape: 'rectangular',
-    width: 280,
-  });
-}
-
-// Called by GIS script once loaded
-window.onGisLoad = function() {
-  _renderGisButton();
-};
+let apiKey = localStorage.getItem('cadvert_api_key') || '';
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 (function init() {
   const savedTheme = localStorage.getItem('cadvert_theme');
-  if (savedTheme) {
-    applyTheme(savedTheme);
-  } else {
-    applyTheme(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  }
-
+  applyTheme(savedTheme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
     if (!localStorage.getItem('cadvert_theme')) applyTheme(e.matches ? 'dark' : 'light');
   });
 
-  // Pre-fill BYOK key if saved from a previous session
-  const savedKey = localStorage.getItem('cadvert_api_key');
-  if (savedKey) {
-    byokKey = savedKey;
-    document.getElementById('apiKeyInput').value = savedKey;
-    document.getElementById('byokKeyInput').value = savedKey;
-  }
+  if (apiKey) document.getElementById('apiKeyInput').value = apiKey;
 
   const dz = document.getElementById('dropzone');
   dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
   dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
   dz.addEventListener('drop', e => {
-    e.preventDefault();
-    dz.classList.remove('drag-over');
+    e.preventDefault(); dz.classList.remove('drag-over');
     const f = e.dataTransfer.files[0];
     if (f) uploadFile(f);
   });
   document.getElementById('fileInput').addEventListener('change', e => {
     if (e.target.files[0]) uploadFile(e.target.files[0]);
   });
-
-  document.getElementById('byokKeyInput').addEventListener('keydown', e => {
-    if (e.key === 'Enter') submitByokKey();
-  });
-  document.getElementById('byokKeyInput2').addEventListener('keydown', e => {
-    if (e.key === 'Enter') submitByokKeyOnly();
-  });
-
-  fetch('/config').then(r => r.json()).then(cfg => {
-    window.STRIPE_ENABLED      = cfg.stripe_enabled      || false;
-    window.STRIPE_BYOK_ENABLED = cfg.stripe_byok_enabled || false;
-
-    if (cfg.disable_auth) {
-      currentUser = { google_id: 'dev', email: 'dev@local', name: 'Dev', picture: '', tier: 'pro' };
-      googleToken = 'dev';
-      _showLoggedIn();
-      _handleUpgradeReturn();
-    } else if (googleToken && currentUser) {
-      // Restore session from sessionStorage (e.g. returning from Stripe checkout)
-      _showLoggedIn();
-      _handleUpgradeReturn();
-    } else {
-      if (typeof google !== 'undefined') _renderGisButton();
-    }
-  }).catch(() => {
-    if (typeof google !== 'undefined') _renderGisButton();
-  });
 })();
-
-function _handleUpgradeReturn() {
-  const params = new URLSearchParams(window.location.search);
-  const plan = params.get('upgraded'); // 'pro', 'byok', or '0'
-  if (plan && plan !== '0') {
-    const messages = {
-      pro:  'Welcome to CADVERT Pro! Unlimited messages, we cover the AI costs.',
-      byok: 'Welcome to CADVERT BYOK! Unlimited messages — enter your OpenAI key to start.',
-    };
-    // Refresh user tier from server
-    fetch('/auth/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ credential: googleToken }),
-    }).then(r => r.ok ? r.json() : null).then(user => {
-      if (user) {
-        currentUser = user;
-        sessionStorage.setItem('cadvert_user', JSON.stringify(user));
-        _updateTierBadge();
-        showToast(messages[plan] || 'Plan activated!', 'success');
-        // BYOK users need to enter their key
-        if (plan === 'byok') setTimeout(() => openByokKeyModal(), 800);
-      }
-    }).catch(() => {});
-    window.history.replaceState({}, '', window.location.pathname);
-  } else if (plan === '0') {
-    window.history.replaceState({}, '', window.location.pathname);
-  }
-}
-
-function _updateTierBadge() {
-  const pill = document.getElementById('userPill');
-  if (!pill) return;
-  const existing = document.getElementById('proBadge');
-  if (existing) existing.remove();
-  if (currentUser && currentUser.tier === 'pro') {
-    const badge = document.createElement('span');
-    badge.id = 'proBadge';
-    badge.textContent = 'Pro';
-    badge.style.cssText = 'font-size:10px;font-weight:700;background:var(--accent);color:#fff;padding:2px 7px;border-radius:5px;';
-    document.getElementById('userNameEl').after(badge);
-  }
-}
 
 // ── Theme ────────────────────────────────────────────────────────────────────
 function setTheme(theme) {
@@ -1677,73 +1294,14 @@ function applyTheme(theme) {
   document.getElementById('pill-dark').classList.toggle('active', theme === 'dark');
 }
 
-// ── API key ──────────────────────────────────────────────────────────────────
+// ── API key (the user's own; sent straight to the provider) ─────────────────
 function saveKey() {
-  const key = document.getElementById('apiKeyInput').value.trim();
-  if (key) {
-    byokKey = key;
-    localStorage.setItem('cadvert_api_key', key);
-    showToast('API key saved', 'success');
-  }
+  apiKey = document.getElementById('apiKeyInput').value.trim();
+  localStorage.setItem('cadvert_api_key', apiKey);
+  showToast(apiKey ? 'API key saved' : 'API key cleared', 'success');
 }
 
-function getKey() {
-  // Returns BYOK key if set, else null (server will use its own key)
-  return byokKey || null;
-}
-
-// ── Free message counter ─────────────────────────────────────────────────────
-function updateFreeCounter() {
-  const counter = document.getElementById('freeCounter');
-  const remaining = Math.max(0, FREE_MSGS - messagesSent);
-  if (!sessionId) { counter.style.display = 'none'; return; }
-  counter.style.display = '';
-  if (byokKey) {
-    counter.textContent = 'Using your API key';
-    counter.className = 'free-counter';
-  } else if (remaining === 0) {
-    counter.textContent = '0 free messages left';
-    counter.className = 'free-counter gone';
-  } else if (remaining === 1) {
-    counter.textContent = '1 free message left';
-    counter.className = 'free-counter warn';
-  } else {
-    counter.textContent = `${remaining} free messages left`;
-    counter.className = 'free-counter';
-  }
-}
-
-// ── BYOK modal ───────────────────────────────────────────────────────────────
-function openByokModal() {
-  document.getElementById('byokModal').classList.add('open');
-  setTimeout(() => document.getElementById('byokKeyInput').focus(), 50);
-}
-
-function submitByokKey() {
-  const key = document.getElementById('byokKeyInput').value.trim();
-  if (!key.startsWith('sk-')) { showToast('Enter a valid API key (starts with sk-)'); return; }
-  byokKey = key;
-  localStorage.setItem('cadvert_api_key', key);
-  document.getElementById('apiKeyInput').value = key;
-  // Show the API key row in header so they can change it later
-  const row = document.getElementById('apiKeyRow');
-  row.style.display = 'flex';
-  document.getElementById('modelSelect').style.display = '';
-  document.getElementById('byokModal').classList.remove('open');
-  updateFreeCounter();
-  showToast('Key saved — continuing with your API key', 'success');
-  // Re-attempt the last message if one was pending
-  if (_pendingMessage) { const m = _pendingMessage; _pendingMessage = null; _sendText(m); }
-}
-
-// ── File limit modal ──────────────────────────────────────────────────────────
-function openFileLimitModal() {
-  document.getElementById('fileLimitModal').classList.add('open');
-}
-
-function closeFileLimitModal() {
-  document.getElementById('fileLimitModal').classList.remove('open');
-}
+function getKey() { return apiKey || null; }
 
 let _pendingMessage = null;
 
@@ -1790,26 +1348,11 @@ async function uploadFile(file) {
       showProcessing(stage, pct, elapsed);
     }, 1000);
 
-    const headers = googleToken ? { 'Authorization': `Bearer ${googleToken}` } : {};
-    const res = await fetch('/convert', { method: 'POST', body: form, headers });
+    const res = await fetch('/convert', { method: 'POST', body: form });
     clearInterval(ticker);
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({ detail: res.statusText }));
-      if (res.status === 401) {
-        googleToken = null; currentUser = null;
-        const overlay = document.getElementById('signinOverlay');
-        overlay.style.display = 'flex'; overlay.classList.remove('hidden');
-        _renderGisButton();
-        const e = new Error('Please sign in to upload files');
-        e._type = 'auth';
-        throw e;
-      }
-      if (res.status === 429) {
-        const e = new Error(body.detail?.message || 'Limit reached');
-        e._type = 'file_limit';
-        throw e;
-      }
       throw new Error(typeof body.detail === 'string' ? body.detail : 'Conversion failed');
     }
 
@@ -1832,8 +1375,6 @@ async function uploadFile(file) {
     clearInterval(ticker);
     hideProcessing();
     setProgress(false);
-    if (err._type === 'file_limit') { openFileLimitModal(); return; }
-    if (err._type === 'auth') return; // overlay already shown
     showToast(err.message);
   }
 }
@@ -1922,8 +1463,6 @@ function renderInfoCard(data) {
 
 // ── Chat enable ───────────────────────────────────────────────────────────────
 function enableChat() {
-  messagesSent = 0;
-  updateFreeCounter();
   document.getElementById('chatInput').disabled = false;
   document.getElementById('sendBtn').disabled = false;
   document.getElementById('chatInput').focus();
@@ -1993,7 +1532,6 @@ async function _sendText(text) {
   document.getElementById('chatInput').disabled = true;
 
   const headers = { 'Content-Type': 'application/json' };
-  if (googleToken) headers['Authorization'] = `Bearer ${googleToken}`;
   // Always send a model header; server ignores it on free messages but needs it for BYOK.
   // Claude models route to Anthropic, everything else to OpenAI.
   const model = document.getElementById('modelSelect').value || 'gpt-4o-mini';
@@ -2013,37 +1551,16 @@ async function _sendText(text) {
     if (!res.ok) {
       const body = await res.json().catch(() => ({ detail: res.statusText }));
       const detail = body.detail || {};
-      if (res.status === 401) {
+      if (detail.error === 'api_key_required') {
         chatHistory.pop();
         removeTyping(typingId);
-        googleToken = null; currentUser = null;
-        const overlay = document.getElementById('signinOverlay');
-        overlay.style.display = 'flex'; overlay.classList.remove('hidden');
-        _renderGisButton();
-        showToast('Session expired — please sign in again');
-        return;
-      }
-      if (res.status === 429 && detail.error === 'byok_key_required') {
-        // Paid BYOK user — just needs to enter their key
-        chatHistory.pop();
-        removeTyping(typingId);
-        _pendingMessage = text;
-        openByokKeyModal();
-        return;
-      }
-      if (res.status === 429 && detail.error === 'byok_required') {
-        // Free tier exhausted — show upgrade wall
-        chatHistory.pop();
-        removeTyping(typingId);
-        _pendingMessage = text;
-        openByokModal();
+        showToast(detail.message || 'Add your API key to chat');
+        document.getElementById('apiKeyInput').focus();
         return;
       }
       throw new Error(typeof detail === 'string' ? detail : (detail.message || 'Chat request failed'));
     }
 
-    messagesSent++;
-    updateFreeCounter();
 
     removeTyping(typingId);
     const assistantMsg = appendMessage('assistant', '');

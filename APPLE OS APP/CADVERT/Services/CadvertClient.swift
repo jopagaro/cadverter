@@ -4,7 +4,6 @@ import Foundation
 /// Works against the bundled local engine or any remote `cadvert-server`.
 struct CadvertClient {
     var baseURL: URL
-    var bearerToken: String? = nil
 
     /// Long timeouts: `/convert` can legitimately take minutes on large assemblies (server cap is 10 min).
     static let session: URLSession = {
@@ -22,9 +21,6 @@ struct CadvertClient {
     private func request(_ path: String, method: String = "GET") -> URLRequest {
         var req = URLRequest(url: URL(string: path, relativeTo: baseURL)!.absoluteURL)
         req.httpMethod = method
-        if let bearerToken, !bearerToken.isEmpty {
-            req.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
-        }
         return req
     }
 

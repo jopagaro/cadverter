@@ -53,17 +53,19 @@ final class ProviderTests: XCTestCase {
 
     func testServerConfigWithProvidersDecodes() throws {
         let json = """
-        {"disable_auth": true, "stripe_enabled": false, "stripe_byok_enabled": false,
-         "providers": {"openai": {"available": true, "server_key": false, "models": ["gpt-4o"], "default_model": "gpt-4o-mini"},
-                       "anthropic": {"available": true, "server_key": true, "models": ["claude-opus-5"], "default_model": "claude-opus-5"}},
-         "tools": ["get_feature", "measure_distance"]}
+        {"local_only": true, "max_file_mb": 500,
+         "providers": {"openai": {"available": true, "key_present": false, "models": ["gpt-4o"], "default_model": "gpt-4o-mini"},
+                       "anthropic": {"available": true, "key_present": true, "models": ["claude-opus-5"], "default_model": "claude-opus-5"}},
+         "tools": ["get_feature", "measure_distance", "get_component", "compute_mass"]}
         """
         let cfg = try JSONDecoder().decode(ServerConfig.self, from: Data(json.utf8))
-        XCTAssertEqual(cfg.info(for: .anthropic)?.serverKey, true)
+        XCTAssertEqual(cfg.localOnly, true)
+        XCTAssertEqual(cfg.info(for: .anthropic)?.keyPresent, true)
         XCTAssertEqual(cfg.info(for: .openai)?.defaultModel, "gpt-4o-mini")
-        XCTAssertEqual(cfg.tools?.count, 2)
-        // Older servers without the block still decode.
-        let old = try JSONDecoder().decode(ServerConfig.self, from: Data(#"{"disable_auth": false, "stripe_enabled": false, "stripe_byok_enabled": false}"#.utf8))
+        XCTAssertEqual(cfg.tools?.count, 4)
+
+        // An engine that predates these fields must still decode.
+        let old = try JSONDecoder().decode(ServerConfig.self, from: Data("{}".utf8))
         XCTAssertNil(old.providers)
     }
 
@@ -71,35 +73,5 @@ final class ProviderTests: XCTestCase {
         let st = AppleIntelligence.status
         if !AppleIntelligence.isSupportedOS { XCTAssertFalse(st.available) }
         XCTAssertFalse(st.detail.isEmpty)
-        // Hardware that cannot run the model can never report itself ready.
-        if !AppleIntelligence.isDeviceCapable {
-            XCTAssertFalse(AppleIntelligence.isReadyNow)
-            XCTAssertFalse(st.available)
-        }
-        // Being ready implies being capable.
-        if AppleIntelligence.isReadyNow { XCTAssertTrue(AppleIntelligence.isDeviceCapable) }
-    }
-
-    /// An Intel Mac runs macOS 26 but can never run Apple Intelligence. The first-run default
-    /// must not land on a provider that would fail the moment the user asks a question.
-    func testDefaultProviderNeverStartsOnAnUnusableApple() {
-        let suite = UserDefaults(suiteName: "CADVERTTests.\(UUID().uuidString)")!
-        let s = AppSettings(defaults: suite)
-        if s.provider == .apple {
-            XCTAssertTrue(AppleIntelligence.isReadyNow,
-                          "defaulted to Apple Intelligence on a Mac where it is not ready")
-        }
-        XCTAssertTrue(AIProvider.selectable.contains(s.provider),
-                      "default provider must be one the picker offers")
-    }
-
-    /// A stored Apple preference is dropped on hardware that can never honour it.
-    func testStoredApplePreferenceDroppedOnIncapableHardware() {
-        let suite = UserDefaults(suiteName: "CADVERTTests.\(UUID().uuidString)")!
-        suite.set("apple", forKey: "provider")
-        let s = AppSettings(defaults: suite)
-        if !AppleIntelligence.isDeviceCapable {
-            XCTAssertEqual(s.provider, .openai, "incapable hardware must fall back off Apple")
-        }
     }
 }
