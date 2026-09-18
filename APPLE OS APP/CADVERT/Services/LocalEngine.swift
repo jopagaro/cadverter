@@ -42,6 +42,12 @@ final class LocalEngine {
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         env["PYTHONNOUSERSITE"] = "1"
         env["VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN"] = "1"
+        // Cached parts belong in Caches: everything there is regenerable from the user's
+        // own CAD file, and the system may reclaim it under disk pressure. Under the App
+        // Sandbox this resolves inside the app container automatically.
+        if let cache = LocalEngine.cacheDirectory {
+            env["CADVERT_DATA_DIR"] = cache.path
+        }
         env["MAX_FILE_MB"] = env["MAX_FILE_MB"] ?? "500"
         env["SESSION_TTL_HOURS"] = env["SESSION_TTL_HOURS"] ?? "72"
         env["ALLOWED_ORIGINS"] = "http://127.0.0.1"
@@ -123,6 +129,18 @@ final class LocalEngine {
 
     static func tail(_ s: String, lines: Int = 25) -> String {
         s.split(separator: "\n", omittingEmptySubsequences: false).suffix(lines).joined(separator: "\n")
+    }
+
+    /// Where cached parts live: `~/Library/Caches/<bundle id>/parts`, or inside the
+    /// sandbox container when sandboxed. Created on demand.
+    static var cacheDirectory: URL? {
+        let fm = FileManager.default
+        guard let base = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
+        let id = Bundle.main.bundleIdentifier ?? "com.cadvert.CADVERT"
+        let dir = base.appendingPathComponent(id, isDirectory: true)
+            .appendingPathComponent("parts", isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
     }
 
     /// Ask the kernel for an unused loopback TCP port.

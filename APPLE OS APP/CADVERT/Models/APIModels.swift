@@ -173,3 +173,27 @@ enum ChatEvent: Equatable {
     case error(String)
     case done
 }
+
+
+/// `GET /cache` — what the engine is holding on disk.
+struct CacheUsage: Decodable, Equatable {
+    var path: String?
+    var sessions: Int
+    var files: Int
+    var megabytes: Double
+    var ttlHours: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case path, sessions, files, megabytes
+        case ttlHours = "ttl_hours"
+    }
+
+    /// "26.4 MB across 15 parts", or a plain empty state.
+    var summary: String {
+        guard sessions > 0 else { return "No cached parts" }
+        let size = megabytes >= 1024
+            ? String(format: "%.1f GB", megabytes / 1024)
+            : String(format: "%.0f MB", megabytes)
+        return "\(size) across \(sessions) part\(sessions == 1 ? "" : "s")"
+    }
+}

@@ -130,6 +130,7 @@ struct SheetHost: View {
             case .developers:  AboutView(section: .developers)
             case .settings:    SettingsView(embedded: false)
             case .keyNeeded:   KeyNeededView()
+            case .appleUnavailable: AppleUnavailableView()
             case .engineLog:   EngineLogView()
             }
         }

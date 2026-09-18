@@ -119,6 +119,26 @@ struct CadvertClient {
         return String(decoding: data, as: UTF8.self)
     }
 
+    /// `GET /cache` — how much disk the cached parts use.
+    func cacheUsage() async throws -> CacheUsage {
+        var req = request("/cache")
+        req.timeoutInterval = 30
+        let (data, resp) = try await Self.session.data(for: req)
+        try Self.check(resp, data)
+        return try JSONDecoder().decode(CacheUsage.self, from: data)
+    }
+
+    /// `DELETE /cache` — remove every cached part. Safe: all of it rebuilds from the file.
+    @discardableResult
+    func clearCache() async throws -> CacheUsage {
+        var req = request("/cache", method: "DELETE")
+        req.timeoutInterval = 60
+        let (data, resp) = try await Self.session.data(for: req)
+        try Self.check(resp, data)
+        struct Cleared: Decodable { let now: CacheUsage }
+        return try JSONDecoder().decode(Cleared.self, from: data).now
+    }
+
     /// `DELETE /session/{id}` — best effort cleanup.
     func deleteSession(_ id: String) async {
         var req = request("/session/\(id)", method: "DELETE")

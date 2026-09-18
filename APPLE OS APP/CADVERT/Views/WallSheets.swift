@@ -99,3 +99,60 @@ struct KeyNeededView: View {
         }
     }
 }
+
+/// Shown when someone picks Apple Intelligence on a Mac that cannot run it.
+///
+/// The three reasons need different answers — wrong hardware is permanent, switched off
+/// and still-downloading are not — so the sheet carries the specific guidance rather than
+/// a single generic line, and always offers the way forward that always works: your own key.
+struct AppleUnavailableView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var p
+    @State private var key = ""
+    @State private var provider: AIProvider = .openai
+
+    var body: some View {
+        let status = AppleIntelligence.status
+        WallBox(icon: "✦",
+                title: status.detail,
+                subtitle: status.guidance ?? "Add your own API key to ask questions about this part.") {
+            Picker("Provider", selection: $provider) {
+                ForEach(AIProvider.selectable.filter(\.needsKey)) { pr in Text(pr.label).tag(pr) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.bottom, 10)
+            .onChange(of: provider) { _, new in key = model.settings.key(for: new) }
+
+            KeyInputRow(key: $key, placeholder: provider.keyPlaceholder, buttonTitle: "Save & continue") {
+                Task { await model.saveAPIKey(key, for: provider) }
+            }
+            Text(provider.keyHint)
+                .typo(11, .medium).foregroundStyle(p.textDim)
+                .multilineTextAlignment(.center).padding(.top, 10)
+
+            if AppleIntelligence.isDeviceCapable {
+                Button("Try Apple Intelligence again") {
+                    if AppleIntelligence.status.available {
+                        model.sheet = nil
+                        if let pending = model.pendingMessage { model.pendingMessage = nil; model.send(pending) }
+                    } else {
+                        model.showToast(AppleIntelligence.status.detail)
+                    }
+                }
+                .buttonStyle(PlainTextButtonStyle())
+                .typo(11, .medium).foregroundStyle(p.accent)
+                .padding(.top, 12)
+            }
+
+            Button("Not now — analysis works without AI") { model.sheet = nil }
+                .buttonStyle(PlainTextButtonStyle())
+                .typo(11, .medium).foregroundStyle(p.textDim).underline()
+                .padding(.top, 8)
+        }
+        .onAppear {
+            provider = model.settings.provider.needsKey ? model.settings.provider : .openai
+            key = model.settings.key(for: provider)
+        }
+    }
+}

@@ -19,28 +19,58 @@ final class AppleIntelligence {
         return false
     }
 
-    /// Human-readable availability for Settings.
-    static var status: (available: Bool, detail: String) {
+    /// Why the on-device model can or cannot answer, in the user's terms.
+    ///
+    /// `detail` is one line for a status row; `guidance` is the fuller explanation shown
+    /// when someone tries to use it and it is not there. Every unavailable case says what
+    /// to do next, and every one of them ends at the same fallback: use your own API key.
+    static var status: (available: Bool, detail: String, guidance: String?) {
         #if canImport(FoundationModels)
         if #available(macOS 26.0, iOS 26.0, *) {
             switch SystemLanguageModel.default.availability {
             case .available:
-                return (true, "On-device model ready — private, offline, no API key.")
+                return (true, "On-device model ready — private, offline, no API key.", nil)
             case .unavailable(let reason):
                 switch reason {
                 case .deviceNotEligible:
-                    return (false, "This device can't run Apple Intelligence.")
+                    return (false,
+                            "This Mac can't run Apple Intelligence.",
+                            "Apple Intelligence needs Apple silicon (M1 or later). Intel Macs "
+                            + "can't run it at any macOS version, and that won't change.\n\n"
+                            + "Everything else works: open a file and CADVERT analyses the exact "
+                            + "geometry, renders the views and writes the document with no AI at all. "
+                            + "To ask questions about a part, add your own OpenAI or Anthropic key "
+                            + "below — it stays in your Keychain and is sent only to that provider.")
                 case .appleIntelligenceNotEnabled:
-                    return (false, "Turn on Apple Intelligence in System Settings to use the on-device model.")
+                    return (false,
+                            "Apple Intelligence is turned off.",
+                            "Turn it on in System Settings → Apple Intelligence & Siri, then come "
+                            + "back and choose Apple Intelligence here. It is free and runs entirely "
+                            + "on this Mac.\n\nIf you would rather not, add your own OpenAI or "
+                            + "Anthropic key below instead.")
                 case .modelNotReady:
-                    return (false, "The on-device model is still downloading — try again shortly.")
+                    return (false,
+                            "The on-device model is still downloading.",
+                            "macOS is still fetching the model. This usually finishes in a few "
+                            + "minutes on a good connection — it is a large download and Apple "
+                            + "pauses it on battery or a metered network.\n\nTry again shortly, or "
+                            + "add your own API key below to start now.")
                 @unknown default:
-                    return (false, "Apple Intelligence is unavailable right now.")
+                    return (false,
+                            "Apple Intelligence is unavailable right now.",
+                            "macOS reports the on-device model as unavailable without saying why. "
+                            + "Check System Settings → Apple Intelligence & Siri, and that macOS is "
+                            + "up to date.\n\nOr add your own API key below to continue.")
                 }
             }
         }
         #endif
-        return (false, "Requires macOS 26 or iOS 26 with Apple Intelligence.")
+        return (false,
+                "Needs macOS 26 or later.",
+                "The on-device model arrived in macOS 26 and needs Apple silicon (M1 or later). "
+                + "Update macOS if you can.\n\nAnalysis, rendered views and the geometry document "
+                + "all work on this version already — only the built-in AI needs the update. To ask "
+                + "questions now, add your own OpenAI or Anthropic key below.")
     }
 
     /// Can this Mac *ever* run the on-device model? False on hardware Apple excludes

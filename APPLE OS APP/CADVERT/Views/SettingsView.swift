@@ -93,7 +93,13 @@ struct SettingsView: View {
                             let st = AppleIntelligence.status
                             HStack(alignment: .top, spacing: 6) {
                                 Circle().fill(st.available ? pal.success : pal.warning).frame(width: 6, height: 6).padding(.top, 5)
-                                Text(st.detail).typo(11, .medium).foregroundStyle(pal.textMuted).fixedSize(horizontal: false, vertical: true)
+                                Text(st.detail).typo(11, .medium).foregroundStyle(pal.text).fixedSize(horizontal: false, vertical: true)
+                            }
+                            if let guidance = st.guidance {
+                                Text(guidance)
+                                    .typo(10.5, .medium).foregroundStyle(pal.textMuted)
+                                    .lineSpacing(2).fixedSize(horizontal: false, vertical: true)
+                                    .padding(.leading, 12)
                             }
                             Text("Apple's on-device model is quick and private but small (about 4k tokens of context). Great for lookups; switch to OpenAI or Claude for big assemblies or deeper engineering judgement.")
                                 .typo(10.5, .medium).foregroundStyle(pal.textDim).fixedSize(horizontal: false, vertical: true)
@@ -138,6 +144,30 @@ struct SettingsView: View {
                         }
                     }
 
+                    // ── Storage ──
+                    VStack(alignment: .leading, spacing: 10) {
+                        SectionLabel(text: "Storage")
+                        Text("Opened parts are cached so views and the geometry document reopen "
+                             + "instantly. All of it rebuilds from your original CAD file, so "
+                             + "clearing it loses nothing.")
+                            .typo(10.5, .medium).foregroundStyle(pal.textDim)
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 8) {
+                            Text(model.cacheUsage?.summary ?? "Checking…")
+                                .typo(11, .medium).foregroundStyle(pal.text)
+                            Spacer()
+                            Button(model.clearingCache ? "Clearing…" : "Clear cache") {
+                                Task { await model.clearCache() }
+                            }
+                            .buttonStyle(GhostButtonStyle())
+                            .disabled(model.clearingCache || (model.cacheUsage?.sessions ?? 0) == 0)
+                        }
+                        if let hours = model.cacheUsage?.ttlHours {
+                            Text("Cached parts are removed automatically after \(hours) hours.")
+                                .typo(10.5, .medium).foregroundStyle(pal.textDim)
+                        }
+                    }
+
                     // ── Appearance ──
                     VStack(alignment: .leading, spacing: 10) {
                         SectionLabel(text: "Appearance")
@@ -164,6 +194,7 @@ struct SettingsView: View {
         .background(pal.surface)
         .environment(\.palette, pal)
         .onAppear { keyDraft = model.settings.key(for: model.settings.provider); keySaved = !keyDraft.isEmpty }
+        .task { await model.refreshCacheUsage() }
         #if os(macOS)
         .frame(width: 560, height: embedded ? nil : 620)
         #endif

@@ -19,7 +19,7 @@ struct Toast: Equatable {
 }
 
 enum AppSheet: String, Identifiable {
-    case hsd, about, developers, settings, keyNeeded, engineLog
+    case hsd, about, developers, settings, keyNeeded, appleUnavailable, engineLog
     var id: String { rawValue }
 }
 
@@ -49,6 +49,10 @@ final class AppModel {
     var draft = ""
     var pendingMessage: String?
     private var lastImport: (data: Data, filename: String)?
+
+    // Storage
+    var cacheUsage: CacheUsage?
+    var clearingCache = false
 
     // UI
     var toast: Toast?
@@ -209,6 +213,28 @@ final class AppModel {
         if session != nil, let client, let session { Task { await client.deleteSession(session.id) } }
     }
 
+    /// Read what the engine is holding on disk. Cheap; safe to call whenever Settings opens.
+    func refreshCacheUsage() async {
+        guard let client else { cacheUsage = nil; return }
+        cacheUsage = try? await client.cacheUsage()
+    }
+
+    /// Delete every cached part. Everything rebuilds from the original file, so the only
+    /// visible effect is that the open part closes.
+    func clearCache() async {
+        guard let client, !clearingCache else { return }
+        clearingCache = true
+        defer { clearingCache = false }
+        let freed = cacheUsage?.summary
+        do {
+            cacheUsage = try await client.clearCache()
+            resetSession()
+            showToast(freed.map { "Cleared \($0)" } ?? "Cache cleared", success: true)
+        } catch {
+            showToast("Could not clear the cache: \(error.localizedDescription)")
+        }
+    }
+
     func refreshEngineLog() {
         #if os(macOS)
         engineLog = engine.snapshotLog()
@@ -355,8 +381,9 @@ final class AppModel {
             return
         }
         if provider == .apple, !AppleIntelligence.status.available {
-            showToast(AppleIntelligence.status.detail)
-            sheet = .settings
+            // Explain why and what to do instead — a toast is too small to carry it.
+            pendingMessage = text
+            sheet = .appleUnavailable
             return
         }
 

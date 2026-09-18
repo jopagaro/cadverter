@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Cached parts were never expiring.** Cleanup walked only the in-memory session table,
+  so anything left behind when the app quit was invisible to the next run and stayed
+  forever — five-day-old files under a one-day limit. The sweep now walks the directory,
+  runs once at startup as well as hourly, and collects orphans from previous runs.
+
+### Added
+
+- `CADVERT_DATA_DIR` chooses where cached parts live. The desktop app points it at its
+  Caches directory, which is where Apple says regenerable data belongs and which resolves
+  inside the sandbox container automatically; the CLI still falls back to the temp folder.
+- `GET /cache` and `DELETE /cache` report and clear what is held on disk, so an app can
+  show "26 MB across 15 parts" and offer a Clear button. Everything cached rebuilds from
+  the original CAD file, so clearing is always safe.
+
 ### Removed
 
 - **Accounts, plans and payment.** cadvert is a local engine: it runs on the machine that

@@ -40,7 +40,10 @@ from fastapi.staticfiles import StaticFiles
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
 STATIC_DIR = Path(__file__).parent / "static"
-UPLOAD_DIR = Path(tempfile.gettempdir()) / "cadvert_sessions"
+# Where uploads and rendered views live. Everything here is regenerable from the user's
+# own CAD file, so it belongs in a cache: the desktop app points CADVERT_DATA_DIR at its
+# sandbox Caches directory, and the CLI falls back to the system temp folder.
+UPLOAD_DIR = Path(os.environ.get("CADVERT_DATA_DIR") or (Path(tempfile.gettempdir()) / "cadvert_sessions"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Limits ────────────────────────────────────────────────────────────────────
@@ -85,21 +88,81 @@ SESSION_TTL_HOURS = int(os.environ.get("SESSION_TTL_HOURS", "24"))
 
 @app.on_event("startup")
 async def _start_cleanup_task():
+    # Sweep once at startup: sessions left behind by a previous run are not in memory,
+    # so a memory-only sweep never sees them and they live forever.
+    _sweep_expired(startup=True)
     asyncio.create_task(_cleanup_loop())
 
 
-async def _cleanup_loop():
-    """Delete expired sessions from memory and disk every hour."""
-    while True:
-        await asyncio.sleep(3600)
-        cutoff = time.time() - SESSION_TTL_HOURS * 3600
-        expired = [sid for sid, ts in list(_session_timestamps.items()) if ts < cutoff]
-        for sid in expired:
+def _sweep_expired(startup: bool = False) -> int:
+    """Delete expired sessions from memory and disk. Returns how many went.
+
+    Walks the directory rather than the in-memory table, so orphans from earlier runs
+    are collected too — that is the difference between a cache with a limit and one that
+    only grows.
+    """
+    cutoff = time.time() - SESSION_TTL_HOURS * 3600
+    removed = 0
+
+    for sid, ts in list(_session_timestamps.items()):
+        if ts < cutoff:
             _sessions.pop(sid, None)
             _session_timestamps.pop(sid, None)
             shutil.rmtree(UPLOAD_DIR / sid, ignore_errors=True)
-        if expired:
-            print(f"[cleanup] Removed {len(expired)} expired sessions")
+            removed += 1
+
+    try:
+        for entry in UPLOAD_DIR.iterdir():
+            if not entry.is_dir() or entry.name in _sessions:
+                continue
+            try:
+                if entry.stat().st_mtime < cutoff:
+                    shutil.rmtree(entry, ignore_errors=True)
+                    removed += 1
+            except OSError:
+                continue
+    except OSError:
+        pass
+
+    if removed:
+        print(f"[cleanup] removed {removed} expired session(s){' at startup' if startup else ''}")
+    return removed
+
+
+async def _cleanup_loop():
+    """Sweep expired sessions every hour."""
+    while True:
+        await asyncio.sleep(3600)
+        _sweep_expired()
+
+
+def _cache_usage() -> dict:
+    """Size and session count on disk, for the app's cache control."""
+    total = files = sessions = 0
+    try:
+        for entry in UPLOAD_DIR.iterdir():
+            if not entry.is_dir():
+                continue
+            sessions += 1
+            for root, _dirs, names in os.walk(entry):
+                for n in names:
+                    try:
+                        total += os.path.getsize(os.path.join(root, n))
+                        files += 1
+                    except OSError:
+                        continue
+    except OSError:
+        pass
+    return {
+        "path": str(UPLOAD_DIR),
+        "sessions": sessions,
+        "files": files,
+        "bytes": total,
+        "megabytes": round(total / (1024 * 1024), 1),
+        "active_sessions": len(_sessions),
+        "ttl_hours": SESSION_TTL_HOURS,
+    }
+
 
 # _sessions and _session_timestamps declared above near app startup
 
@@ -767,6 +830,37 @@ async def call_tool(
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(_executor, _execute_tool, session, name, args)
     return JSONResponse(result)
+
+
+@app.get("/cache")
+async def cache_usage():
+    """How much disk the cached parts are using, for the app's cache control."""
+    return JSONResponse(_cache_usage())
+
+
+@app.delete("/cache")
+async def clear_cache():
+    """Delete every cached part, including the one currently open.
+
+    Everything here can be rebuilt by reopening the CAD file, so this is always safe;
+    the caller just has to reopen whatever it was showing.
+    """
+    before = _cache_usage()
+    _sessions.clear()
+    _session_timestamps.clear()
+    removed = 0
+    try:
+        for entry in UPLOAD_DIR.iterdir():
+            if entry.is_dir():
+                shutil.rmtree(entry, ignore_errors=True)
+                removed += 1
+    except OSError:
+        pass
+    return JSONResponse({
+        "cleared_sessions": removed,
+        "freed_megabytes": before["megabytes"],
+        "now": _cache_usage(),
+    })
 
 
 @app.get("/tools")

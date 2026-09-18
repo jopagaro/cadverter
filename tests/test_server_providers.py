@@ -205,3 +205,74 @@ async def test_stream_anthropic_refusal(monkeypatch):
     out = [c async for c in server._stream_anthropic("k", "claude-opus-5", "SYS",
                                                      [{"role": "user", "content": "x"}], {}, False)]
     assert '"error"' in out[-1]
+
+
+# ── Cache: the sweep must see orphans, not just live sessions ────────────────
+
+def test_sweep_removes_orphans_from_previous_runs(tmp_path, monkeypatch):
+    """The original bug: cleanup walked only the in-memory table, so a session left
+    behind when the app quit was invisible forever. Five-day-old files survived a
+    one-day limit."""
+    import time
+    monkeypatch.setattr(server, "UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(server, "SESSION_TTL_HOURS", 24)
+
+    orphan = tmp_path / "left-by-a-previous-run"
+    orphan.mkdir()
+    (orphan / "input.step").write_text("x" * 1024)
+    import os
+    old = time.time() - 200 * 3600
+    os.utime(orphan, (old, old))
+
+    fresh = tmp_path / "opened-just-now"
+    fresh.mkdir()
+    (fresh / "input.step").write_text("y" * 512)
+
+    assert server._sweep_expired(startup=True) == 1
+    assert not orphan.exists(), "the orphan should be gone"
+    assert fresh.exists(), "a recent part must survive"
+
+
+def test_cache_usage_reports_what_is_on_disk(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "UPLOAD_DIR", tmp_path)
+    (tmp_path / "s1").mkdir()
+    (tmp_path / "s1" / "input.step").write_bytes(b"0" * 2048)
+    (tmp_path / "s2").mkdir()
+    (tmp_path / "s2" / "view.png").write_bytes(b"0" * 1024)
+
+    usage = server._cache_usage()
+    assert usage["sessions"] == 2
+    assert usage["files"] == 2
+    assert usage["bytes"] == 3072
+    assert usage["ttl_hours"] == server.SESSION_TTL_HOURS
+
+
+def test_clear_cache_endpoint_empties_it(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "UPLOAD_DIR", tmp_path)
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "f.png").write_bytes(b"0" * 4096)
+    server._sessions["a"] = {"units": "mm"}
+
+    r = client.delete("/cache")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["cleared_sessions"] == 1
+    assert body["now"]["sessions"] == 0
+    assert not server._sessions
+    assert client.get("/cache").json()["sessions"] == 0
+
+
+def test_data_dir_is_configurable():
+    """The desktop app points this at its sandbox Caches directory."""
+    import importlib, os
+    saved = os.environ.get("CADVERT_DATA_DIR")
+    try:
+        os.environ["CADVERT_DATA_DIR"] = "/tmp/cadvert-dir-test"
+        mod = importlib.reload(server)
+        assert str(mod.UPLOAD_DIR) == "/tmp/cadvert-dir-test"
+    finally:
+        if saved is None:
+            os.environ.pop("CADVERT_DATA_DIR", None)
+        else:
+            os.environ["CADVERT_DATA_DIR"] = saved
+        importlib.reload(server)
