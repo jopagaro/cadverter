@@ -29,9 +29,22 @@ Both URLs are required fields; you cannot submit without them.
 
 ## 3. Build
 
-- [ ] `make engine-all` — both architecture engines present.
+- [ ] `make engine-all` — both architecture engines present (slow, downloads ~800 MB each).
+- [ ] **`./scripts/refresh-engine.sh`** — reinstall the current cadvert into them.
 - [ ] `make archive-universal` — produces the universal archive (~1.6 GB).
 - [ ] In Xcode Organizer: Distribute App → App Store Connect → Upload.
+
+**Do not skip the refresh step.** The engines are built once and reused, so they keep
+whatever version of cadvert was current when they were built. Shipping a stale one is easy
+to do and hard to notice: the app launches, analysis works, and only the newest endpoints
+are quietly missing. It had already happened here — the Release build was carrying a server
+that still had Stripe configuration in it.
+
+Verify before archiving:
+```
+curl -s http://127.0.0.1:<port>/config | grep local_only
+```
+(the port is in Settings → Engine log)
 
 Expect the upload to be slow. It's mostly the two bundled engines.
 
@@ -57,7 +70,18 @@ That falls under the standard exemption for apps using only HTTPS. Answer that y
 encryption, then that it qualifies for the exemption. This avoids the annual self-
 classification report. If in doubt, Apple's own questionnaire walks you through it.
 
-## 6. After approval
+## 6. Verified already — you do not need to retest these
+
+- The **App Sandbox works end to end**: launching the engine as a child process, loopback
+  networking, writing to the container, and VTK rendering all function under the real
+  sandbox with the release entitlements. This was the biggest unknown, because Debug builds
+  run unsandboxed and never exercise it.
+- The **universal build** produces both architectures with both engines correctly signed,
+  and the app selects the right one at runtime.
+- **Cached parts land inside the app container**, where Apple expects regenerable data, and
+  the Storage control in Settings reports and clears them.
+
+## 7. After approval
 
 - [ ] Verify the download on a Mac that has never run the app — this is the only way to
       catch a signing or sandbox problem that never appears on a development machine.

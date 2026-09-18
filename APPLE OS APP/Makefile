@@ -3,7 +3,7 @@ XCODEPROJ = CADVERT.xcodeproj
 SCHEME    = CADVERT
 BUILD     = build
 
-.PHONY: generate icon build-mac build-ios test run-mac engine engine-intel engine-all \
+.PHONY: generate icon build-mac build-ios test run-mac engine engine-intel engine-all refresh \
         archive-mac archive-universal release-arm64 release-intel release-both dmg clean
 
 generate:            ## Regenerate CADVERT.xcodeproj from project.yml
@@ -33,6 +33,9 @@ engine-intel:        ## Build the Intel (x86_64) engine — needs Rosetta on App
 	./scripts/bundle-engine.sh --arch x86_64 --source ..
 
 engine-all: engine engine-intel  ## Build both engines (needed for a universal build)
+
+refresh:             ## Reinstall current cadvert into existing engines (run before archiving)
+	./scripts/refresh-engine.sh
 
 archive-mac: generate ## Release archive for this Mac's architecture only
 	CADVERT_ENGINE_ARCHS=$(shell uname -m) xcodebuild -project $(XCODEPROJ) -scheme $(SCHEME) \
