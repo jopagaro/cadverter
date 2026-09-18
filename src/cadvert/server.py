@@ -56,10 +56,29 @@ MAX_FILE_MB = int(os.environ.get("MAX_FILE_MB", "500"))
 MAX_HISTORY_MESSAGES = int(os.environ.get("MAX_HISTORY_MESSAGES", "30"))
 # Max length of a single user message
 MAX_MESSAGE_CHARS = int(os.environ.get("MAX_MESSAGE_CHARS", "4000"))
-# Allowed OpenAI models (keeps a typo from reaching the API as a bill)
-ALLOWED_MODELS = {
-    "gpt-4o-mini", "gpt-4o", "gpt-4.1", "gpt-4.1-mini", "gpt-5.4", "o4-mini",
-}
+# Suggested models, newest first. These are only defaults for the picker — the engine
+# does not gate on them. A hardcoded allow-list goes stale the moment a provider ships
+# something new, and the old behaviour (silently swapping in a cheaper default) meant a
+# user could ask for their best model and be answered by a different one without being
+# told. The app fetches the live list from the provider when a key is present.
+SUGGESTED_OPENAI_MODELS = [
+    ("gpt-6-astra",   "GPT-6 Astra"),
+    ("gpt-5.6-sol",   "GPT-5.6 Sol"),
+    ("gpt-5.6-terra", "GPT-5.6 Terra"),
+    ("gpt-5.6-luna",  "GPT-5.6 Luna"),
+    ("gpt-5.5",       "GPT-5.5"),
+    ("gpt-5.4",       "GPT-5.4"),
+]
+SUGGESTED_ANTHROPIC_MODELS = [
+    ("claude-fable-5-1", "Claude Fable 5.1"),
+    ("claude-opus-5",    "Claude Opus 5"),
+    ("claude-opus-4-8",  "Claude Opus 4.8"),
+    ("claude-sonnet-5",  "Claude Sonnet 5"),
+    ("claude-haiku-4-5", "Claude Haiku 4.5"),
+]
+ALLOWED_MODELS = {m for m, _ in SUGGESTED_OPENAI_MODELS}            # kept for callers
+ALLOWED_ANTHROPIC_MODELS = {m for m, _ in SUGGESTED_ANTHROPIC_MODELS}
+
 # Keys come from the environment the app starts the engine with, or from a request
 # header. They are the user's own; nothing is billed centrally.
 SERVER_OPENAI_KEY: Optional[str] = os.environ.get("OPENAI_API_KEY")
@@ -355,10 +374,7 @@ CADVERT_TOOLS = [
 # Two hosted providers share the same tool set. Clients pick one with `X-Provider`
 # (openai | anthropic); if absent it is inferred from the model name.
 SERVER_ANTHROPIC_KEY: Optional[str] = os.environ.get("ANTHROPIC_API_KEY")
-ALLOWED_ANTHROPIC_MODELS = {
-    "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-opus-4-8", "claude-sonnet-4-6",
-}
-DEFAULT_OPENAI_MODEL    = "gpt-4o-mini"
+DEFAULT_OPENAI_MODEL    = "gpt-5.6-terra"
 DEFAULT_ANTHROPIC_MODEL = "claude-opus-5"
 MAX_TOOL_ROUNDS = 8
 TOOL_NAMES = {t["function"]["name"] for t in CADVERT_TOOLS}
@@ -377,14 +393,19 @@ def _anthropic_tools() -> list[dict]:
 
 
 def _resolve_provider(x_provider: Optional[str], x_model: Optional[str]) -> tuple[str, str]:
-    """Return (provider, model) with unknown models clamped to each provider's default."""
+    """Return (provider, model).
+
+    The requested model is passed through as-is. Model names change often, and an engine
+    that quietly answers with a different model than the one asked for is worse than one
+    that forwards the request and lets the provider reject an unknown name — the user at
+    least learns their model was wrong. Only an empty model falls back to a default.
+    """
     p = (x_provider or "").strip().lower()
+    model = (x_model or "").strip()
     if p not in ("openai", "anthropic"):
-        p = "anthropic" if (x_model or "").startswith("claude-") else "openai"
-    if p == "anthropic":
-        model = x_model if x_model in ALLOWED_ANTHROPIC_MODELS else DEFAULT_ANTHROPIC_MODEL
-    else:
-        model = x_model if x_model in ALLOWED_MODELS else DEFAULT_OPENAI_MODEL
+        p = "anthropic" if model.startswith("claude-") else "openai"
+    if not model:
+        model = DEFAULT_ANTHROPIC_MODEL if p == "anthropic" else DEFAULT_OPENAI_MODEL
     return p, model
 
 
@@ -830,6 +851,67 @@ async def call_tool(
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(_executor, _execute_tool, session, name, args)
     return JSONResponse(result)
+
+
+@app.get("/models")
+async def list_models(
+    provider: str = "openai",
+    x_openai_key: Optional[str] = Header(default=None, alias="X-OpenAI-Key"),
+    x_anthropic_key: Optional[str] = Header(default=None, alias="X-Anthropic-Key"),
+):
+    """Models this key can actually use, straight from the provider.
+
+    A hardcoded list is wrong the day a provider ships something new, so the picker asks
+    the provider. Without a key there is nothing to ask, and the curated suggestions are
+    returned instead — flagged as such so the caller can say so.
+    """
+    provider = (provider or "").strip().lower()
+    if provider not in ("openai", "anthropic"):
+        raise HTTPException(status_code=400, detail="provider must be 'openai' or 'anthropic'")
+
+    suggested = SUGGESTED_ANTHROPIC_MODELS if provider == "anthropic" else SUGGESTED_OPENAI_MODELS
+    fallback = {
+        "provider": provider,
+        "live": False,
+        "models": [{"id": m, "label": label} for m, label in suggested],
+    }
+
+    key = ((x_anthropic_key if provider == "anthropic" else x_openai_key) or "").strip()
+    key = key or (SERVER_ANTHROPIC_KEY if provider == "anthropic" else SERVER_OPENAI_KEY)
+    if not key or not _provider_available(provider):
+        return JSONResponse(fallback)
+
+    try:
+        if provider == "anthropic":
+            from anthropic import AsyncAnthropic
+            client = AsyncAnthropic(api_key=key)
+            page = await client.models.list(limit=100)
+            models = [
+                {"id": m.id, "label": getattr(m, "display_name", None) or m.id}
+                for m in page.data
+            ]
+        else:
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=key)
+            listing = await client.models.list()
+            # The OpenAI catalogue includes embeddings, audio and image models; keep the
+            # ones that answer chat requests.
+            skip = ("embed", "whisper", "tts", "dall-e", "moderation", "image",
+                    "audio", "realtime", "transcribe", "search", "codex")
+            models = [
+                {"id": m.id, "label": m.id}
+                for m in listing.data
+                if m.id.startswith(("gpt-", "o1", "o3", "o4", "chatgpt"))
+                and not any(k in m.id for k in skip)
+            ]
+        if not models:
+            return JSONResponse(fallback)
+        models.sort(key=lambda m: m["id"], reverse=True)
+        return JSONResponse({"provider": provider, "live": True, "models": models})
+    except Exception as exc:
+        out = dict(fallback)
+        out["error"] = f"Could not reach {provider}: {exc}"
+        return JSONResponse(out)
 
 
 @app.get("/cache")

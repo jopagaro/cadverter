@@ -119,6 +119,18 @@ struct CadvertClient {
         return String(decoding: data, as: UTF8.self)
     }
 
+    /// `GET /models` — what this key can actually use, asked of the provider.
+    func availableModels(provider: AIProvider, apiKey: String?) async throws -> ModelListing {
+        var req = request("/models?provider=\(provider.rawValue)")
+        req.timeoutInterval = 30
+        if let apiKey, !apiKey.isEmpty {
+            req.setValue(apiKey, forHTTPHeaderField: provider == .anthropic ? "X-Anthropic-Key" : "X-OpenAI-Key")
+        }
+        let (data, resp) = try await Self.session.data(for: req)
+        try Self.check(resp, data)
+        return try JSONDecoder().decode(ModelListing.self, from: data)
+    }
+
     /// `GET /cache` — how much disk the cached parts use.
     func cacheUsage() async throws -> CacheUsage {
         var req = request("/cache")

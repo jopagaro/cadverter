@@ -174,20 +174,23 @@ enum AIProvider: String, CaseIterable, Identifiable {
 /// Model lists per hosted provider, in the order shown in the pickers. Must stay within the
 /// server's allow-lists (`ALLOWED_MODELS` / `ALLOWED_ANTHROPIC_MODELS` in server.py).
 enum ChatModel {
+    /// Shown before a key is entered, and whenever the provider can't be reached.
+    /// These go stale — the live list from `GET /models` replaces them as soon as a key
+    /// exists, which is the only way a picker stays correct across provider releases.
     static let openAI: [(id: String, label: String)] = [
-        ("gpt-4o-mini",  "GPT-4o mini"),
-        ("gpt-4o",       "GPT-4o"),
-        ("gpt-4.1",      "GPT-4.1"),
-        ("gpt-4.1-mini", "GPT-4.1 mini"),
-        ("gpt-5.4",      "GPT-5.4"),
-        ("o4-mini",      "o4-mini"),
+        ("gpt-6-astra",   "GPT-6 Astra"),
+        ("gpt-5.6-sol",   "GPT-5.6 Sol"),
+        ("gpt-5.6-terra", "GPT-5.6 Terra"),
+        ("gpt-5.6-luna",  "GPT-5.6 Luna"),
+        ("gpt-5.5",       "GPT-5.5"),
+        ("gpt-5.4",       "GPT-5.4"),
     ]
     static let anthropic: [(id: String, label: String)] = [
+        ("claude-fable-5-1", "Claude Fable 5.1"),
         ("claude-opus-5",    "Claude Opus 5"),
+        ("claude-opus-4-8",  "Claude Opus 4.8"),
         ("claude-sonnet-5",  "Claude Sonnet 5"),
         ("claude-haiku-4-5", "Claude Haiku 4.5"),
-        ("claude-opus-4-8",  "Claude Opus 4.8"),
-        ("claude-sonnet-4-6","Claude Sonnet 4.6"),
     ]
 
     static func models(for provider: AIProvider) -> [(id: String, label: String)] {
@@ -195,8 +198,8 @@ enum ChatModel {
     }
 
     static func defaultModel(for provider: AIProvider) -> String {
-        provider == .anthropic ? "claude-opus-5" : "gpt-4o-mini"
+        provider == .anthropic ? "claude-opus-5" : "gpt-5.6-terra"
     }
 
-    static let `default` = "gpt-4o-mini"
+    static let `default` = "gpt-5.6-terra"
 }

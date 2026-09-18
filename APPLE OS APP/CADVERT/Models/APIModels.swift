@@ -197,3 +197,18 @@ struct CacheUsage: Decodable, Equatable {
         return "\(size) across \(sessions) part\(sessions == 1 ? "" : "s")"
     }
 }
+
+
+/// `GET /models` — the picker's contents.
+struct ModelListing: Decodable, Equatable {
+    struct Entry: Decodable, Equatable, Identifiable {
+        var id: String
+        var label: String?
+        var name: String { label ?? id }
+    }
+
+    /// True when this came from the provider rather than the built-in suggestions.
+    var live: Bool
+    var models: [Entry]
+    var error: String?
+}

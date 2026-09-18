@@ -16,3 +16,6 @@ CADVERT.xcodeproj/
 Engine/engine/
 Engine/engine-*/
 Engine/downloads/
+
+# macOS
+.DS_Store

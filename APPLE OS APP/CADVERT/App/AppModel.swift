@@ -50,6 +50,9 @@ final class AppModel {
     var pendingMessage: String?
     private var lastImport: (data: Data, filename: String)?
 
+    // Models offered by each provider — live from the provider once a key exists.
+    var modelListings: [AIProvider: ModelListing] = [:]
+
     // Storage
     var cacheUsage: CacheUsage?
     var clearingCache = false
@@ -211,6 +214,29 @@ final class AppModel {
         #endif
         connectTask?.cancel()
         if session != nil, let client, let session { Task { await client.deleteSession(session.id) } }
+    }
+
+    /// Ask the provider which models this key can use. Falls back to the built-in
+    /// suggestions, which is what the engine returns when there is no key to ask with.
+    func refreshModels(for provider: AIProvider) async {
+        guard provider.needsKey, let client else { return }
+        if let listing = try? await client.availableModels(provider: provider,
+                                                           apiKey: settings.trimmedKey(for: provider)) {
+            modelListings[provider] = listing
+        }
+    }
+
+    /// What the picker should show for a provider.
+    func models(for provider: AIProvider) -> [(id: String, label: String)] {
+        if let live = modelListings[provider], !live.models.isEmpty {
+            return live.models.map { (id: $0.id, label: $0.name) }
+        }
+        return ChatModel.models(for: provider)
+    }
+
+    /// True when the list came from the provider rather than the built-in suggestions.
+    func modelsAreLive(for provider: AIProvider) -> Bool {
+        modelListings[provider]?.live == true
     }
 
     /// Read what the engine is holding on disk. Cheap; safe to call whenever Settings opens.
@@ -491,6 +517,7 @@ final class AppModel {
             showToast("Key saved — continuing with your API key", success: true)
             if let pending = pendingMessage { pendingMessage = nil; send(pending) }
         }
+        await refreshModels(for: provider)
     }
 
     // MARK: - HSD / images / misc

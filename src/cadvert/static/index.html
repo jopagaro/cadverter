@@ -1122,23 +1122,20 @@
     <input type="password" id="apiKeyInput" placeholder="sk-… or sk-ant-…" autocomplete="off">
     <button class="btn btn-ghost" onclick="saveKey()">Save</button>
     <select id="modelSelect">
-      <optgroup label="Apple / on-device">
-        <option value="" disabled>— use the Mac app for on-device —</option>
-      </optgroup>
       <optgroup label="OpenAI">
-        <option value="gpt-4o-mini">GPT-4o mini</option>
-        <option value="gpt-4o">GPT-4o</option>
-        <option value="gpt-4.1">GPT-4.1</option>
-        <option value="gpt-4.1-mini">GPT-4.1 mini</option>
+        <option value="gpt-6-astra">GPT-6 Astra</option>
+        <option value="gpt-5.6-sol">GPT-5.6 Sol</option>
+        <option value="gpt-5.6-terra" selected>GPT-5.6 Terra</option>
+        <option value="gpt-5.6-luna">GPT-5.6 Luna</option>
+        <option value="gpt-5.5">GPT-5.5</option>
         <option value="gpt-5.4">GPT-5.4</option>
-        <option value="o4-mini">o4-mini</option>
       </optgroup>
       <optgroup label="Anthropic">
+        <option value="claude-fable-5-1">Claude Fable 5.1</option>
         <option value="claude-opus-5">Claude Opus 5</option>
+        <option value="claude-opus-4-8">Claude Opus 4.8</option>
         <option value="claude-sonnet-5">Claude Sonnet 5</option>
         <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
-        <option value="claude-opus-4-8">Claude Opus 4.8</option>
-        <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
       </optgroup>
     </select>
   </div>

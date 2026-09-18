@@ -24,9 +24,13 @@ final class ProviderTests: XCTestCase {
 
     func testModelListsAndDefaults() {
         XCTAssertEqual(ChatModel.defaultModel(for: .anthropic), "claude-opus-5")
-        XCTAssertEqual(ChatModel.defaultModel(for: .openai), "gpt-4o-mini")
+        XCTAssertEqual(ChatModel.defaultModel(for: .openai), "gpt-5.6-terra")
         XCTAssertTrue(ChatModel.models(for: .anthropic).contains { $0.id == "claude-sonnet-5" })
-        XCTAssertTrue(ChatModel.models(for: .openai).contains { $0.id == "gpt-4o" })
+        XCTAssertTrue(ChatModel.models(for: .openai).contains { $0.id == "gpt-6-astra" })
+        // Retired generations must not linger in the picker — a stale list is the whole
+        // reason the app asks the provider for a live one.
+        XCTAssertFalse(ChatModel.models(for: .openai).contains { $0.id.hasPrefix("gpt-4") })
+        XCTAssertTrue(ChatModel.models(for: .anthropic).contains { $0.id == "claude-fable-5-1" })
         XCTAssertTrue(AIProvider.selectable.contains(.openai))
         XCTAssertTrue(AIProvider.selectable.contains(.anthropic))
         // Apple is offered only on hardware that can actually run the on-device model.
@@ -40,9 +44,9 @@ final class ProviderTests: XCTestCase {
         XCTAssertEqual(s.currentModel, "claude-opus-5")
         s.setModel("claude-sonnet-5", for: .anthropic)
         XCTAssertEqual(s.currentModel, "claude-sonnet-5")
-        XCTAssertEqual(s.model(for: .openai), "gpt-4o-mini")
+        XCTAssertEqual(s.model(for: .openai), "gpt-5.6-terra")
         s.provider = .openai
-        XCTAssertEqual(s.currentModel, "gpt-4o-mini")
+        XCTAssertEqual(s.currentModel, "gpt-5.6-terra")
         // Apple needs no key
         if AppleIntelligence.isSupportedOS {
             s.provider = .apple

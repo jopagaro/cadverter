@@ -132,10 +132,14 @@ struct SettingsView: View {
                             HStack(spacing: 8) {
                                 Text("Model").typo(11, .medium).foregroundStyle(pal.textMuted)
                                 Picker("Model", selection: Binding(get: { settings.model(for: pr) }, set: { settings.setModel($0, for: pr) })) {
-                                    ForEach(ChatModel.models(for: pr), id: \.id) { m in Text(m.label).tag(m.id) }
+                                    ForEach(model.models(for: pr), id: \.id) { m in Text(m.label).tag(m.id) }
                                 }
                                 .labelsHidden()
-                                .frame(maxWidth: 220)
+                                .frame(maxWidth: 240)
+                                if model.modelsAreLive(for: pr) {
+                                    Text("live").typo(9, .semibold).foregroundStyle(pal.success)
+                                        .help("Fetched from \(pr.keyVendor) with your key")
+                                }
                             }
                             if let info = model.serverConfig?.info(for: pr), info.available == false {
                                 Text("This server doesn't have the \(pr.keyVendor) SDK installed (pip install cadvert[llm]).")
@@ -194,7 +198,10 @@ struct SettingsView: View {
         .background(pal.surface)
         .environment(\.palette, pal)
         .onAppear { keyDraft = model.settings.key(for: model.settings.provider); keySaved = !keyDraft.isEmpty }
-        .task { await model.refreshCacheUsage() }
+        .task {
+            await model.refreshCacheUsage()
+            await model.refreshModels(for: model.settings.provider)
+        }
         #if os(macOS)
         .frame(width: 560, height: embedded ? nil : 620)
         #endif

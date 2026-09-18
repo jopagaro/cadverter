@@ -4,6 +4,21 @@
 
 ### Fixed
 
+- **The model picker silently answered with a different model than you chose.** The server
+  kept a hardcoded allow-list and quietly substituted a cheap default for anything not on
+  it, so a user could select their best model and never learn they were answered by another.
+  Requested models now pass through to the provider, which either works or returns a clear
+  error. The lists themselves were two generations stale (GPT-4o, GPT-4.1) and are now
+  current on both sides, including Claude Fable 5.1.
+
+### Added
+
+- `GET /models` asks the provider which models a key can actually use, so the picker stops
+  going stale between releases. Without a key it returns curated suggestions, flagged as
+  such. The app labels a live list so the user knows which they are looking at.
+
+
+
 - **Cached parts were never expiring.** Cleanup walked only the in-memory session table,
   so anything left behind when the app quit was invisible to the next run and stayed
   forever — five-day-old files under a one-day limit. The sweep now walks the directory,

@@ -30,13 +30,17 @@ def test_anthropic_tool_translation():
 
 
 @pytest.mark.parametrize("hdr,model,expected", [
-    (None, "gpt-4o", ("openai", "gpt-4o")),
+    # Provider inferred from the model name when the header is absent.
+    (None, "gpt-5.6-terra", ("openai", "gpt-5.6-terra")),
     (None, "claude-opus-5", ("anthropic", "claude-opus-5")),
-    ("anthropic", "gpt-4o", ("anthropic", server.DEFAULT_ANTHROPIC_MODEL)),   # wrong model → provider default
-    ("openai", "claude-opus-5", ("openai", server.DEFAULT_OPENAI_MODEL)),
     ("ANTHROPIC", "claude-sonnet-5", ("anthropic", "claude-sonnet-5")),
+    # An unrecognised header still infers from the model.
     ("bogus", "claude-haiku-4-5", ("anthropic", "claude-haiku-4-5")),
-    (None, "not-a-model", ("openai", server.DEFAULT_OPENAI_MODEL)),
+    # The header wins over the name when both are given — the caller knows best.
+    ("anthropic", "some-new-claude", ("anthropic", "some-new-claude")),
+    # Only an empty model falls back.
+    (None, "", ("openai", server.DEFAULT_OPENAI_MODEL)),
+    ("anthropic", None, ("anthropic", server.DEFAULT_ANTHROPIC_MODEL)),
 ])
 def test_resolve_provider(hdr, model, expected):
     assert server._resolve_provider(hdr, model) == expected
@@ -276,3 +280,46 @@ def test_data_dir_is_configurable():
         else:
             os.environ["CADVERT_DATA_DIR"] = saved
         importlib.reload(server)
+
+
+# ── Models: never silently answer with a model the caller did not ask for ────
+
+def test_unknown_model_is_passed_through_not_swapped():
+    """The old behaviour quietly substituted a cheaper default, so a user could ask for
+    their best model and be answered by another one without being told. Model names
+    change constantly; forwarding and letting the provider reject is honest."""
+    assert server._resolve_provider(None, "gpt-6-astra") == ("openai", "gpt-6-astra")
+    assert server._resolve_provider(None, "claude-fable-5-1") == ("anthropic", "claude-fable-5-1")
+    assert server._resolve_provider("openai", "something-released-tomorrow") == \
+        ("openai", "something-released-tomorrow")
+
+
+def test_empty_model_falls_back_to_a_default():
+    prov, model = server._resolve_provider("anthropic", "")
+    assert (prov, model) == ("anthropic", server.DEFAULT_ANTHROPIC_MODEL)
+    prov, model = server._resolve_provider(None, None)
+    assert (prov, model) == ("openai", server.DEFAULT_OPENAI_MODEL)
+
+
+def test_models_endpoint_falls_back_without_a_key(client, monkeypatch):
+    monkeypatch.setattr(server, "SERVER_OPENAI_KEY", None)
+    monkeypatch.setattr(server, "SERVER_ANTHROPIC_KEY", None)
+    for provider, expected in (("openai", "gpt-6-astra"), ("anthropic", "claude-fable-5-1")):
+        body = client.get(f"/models?provider={provider}").json()
+        assert body["live"] is False
+        assert expected in [m["id"] for m in body["models"]]
+
+
+def test_models_endpoint_rejects_an_unknown_provider(client):
+    assert client.get("/models?provider=bogus").status_code == 400
+
+
+def test_suggested_models_are_current():
+    """A stale picker is the whole problem this endpoint exists to solve."""
+    openai_ids = {m for m, _ in server.SUGGESTED_OPENAI_MODELS}
+    anthropic_ids = {m for m, _ in server.SUGGESTED_ANTHROPIC_MODELS}
+    assert {"gpt-6-astra", "gpt-5.6-sol"} <= openai_ids
+    assert {"claude-fable-5-1", "claude-opus-5"} <= anthropic_ids
+    # Retired generations must not linger in the picker.
+    assert not any(m.startswith(("gpt-4o", "gpt-4.1")) for m in openai_ids)
+    assert "claude-sonnet-4-6" not in anthropic_ids
