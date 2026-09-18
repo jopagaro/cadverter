@@ -30,6 +30,12 @@ Shot 1 is the one that sells it. The feature list down the side (236 fillets, 18
 countersinks, 110 bosses) is the proof that it read the geometry rather than looked at a
 picture.
 
+## Screenshots are not committed
+
+`screenshots/` is gitignored. Screenshots contain whatever part happened to be open, and
+that part is often someone else's model with their part numbers in it. Keeping them out of
+the repo means a published repository can never leak a design that is not yours.
+
 ## One caution
 
 The most impressive capture I made shows your Vietnamese client's assembly, including its

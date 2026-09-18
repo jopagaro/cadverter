@@ -19,3 +19,7 @@ Engine/downloads/
 
 # macOS
 .DS_Store
+
+# Screenshots are made from whatever part you happen to open — keep other
+# people's models and their part numbers out of the repo.
+FOR APPLE SUBMISSION CADVERT/screenshots/*.png

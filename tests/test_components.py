@@ -18,10 +18,10 @@ HEADER = r"""ISO-10303-21;
 HEADER;
 FILE_NAME(
 /* name */
-'D:\\01.T2 Mechanical\\2025\\T2M-02-M\X\E1y V\X2\1EA1\X0\t
- M\X2\1EB7\X0\t Tr\X2\1EE5\X0\\\T2M-02-MKTTD-A001.stp',
-/* time_stamp */ '2026-03-27T23:32:11+07:00',
-/* author */ ('VMT'),
+'D:\\Projects\\2026\\Demo-01-Geh\X\E4use M\X2\00FC\X0\hle
+ Pr\X2\00FC\X0\fung\\Demo-01-A001.stp',
+/* time_stamp */ '2026-01-01T00:00:00+00:00',
+/* author */ ('ACME'),
 /* organization */ (''),
 /* preprocessor_version */ 'ST-DEVELOPER v18.1',
 /* originating_system */ 'Autodesk Inventor 2021',
@@ -35,7 +35,7 @@ DATA;
 #7=PRODUCT('belt s5m-300','dup in different case','',(#8));
 #9=PRODUCT('Part1','generic, should be skipped','',(#10));
 #11=PRODUCT('','empty, should be skipped','',(#12));
-#13=PRODUCT('T2M-02-MKTTD-T002','custom part','',(#14));
+#13=PRODUCT('Demo-01-T002','custom part','',(#14));
 ENDSEC;
 END-ISO-10303-21;
 """
@@ -66,7 +66,7 @@ class TestComponents:
         assert "Belt S5M-300" in got
         assert "ISO 4762 - M8 x 20" in got
         assert "DIN 625 T1 - 6205 - 25 x 52 x 15" in got
-        assert "T2M-02-MKTTD-T002" in got
+        assert "Demo-01-T002" in got
 
     def test_deduplicates_case_insensitively(self):
         got = _parse_components(HEADER)
@@ -90,7 +90,7 @@ class TestHeaderFields:
         assert _parse_originating_system(HEADER) == "Autodesk Inventor 2021"
 
     def test_project_name_decoded_from_the_path(self):
-        assert _parse_project(HEADER) == "T2M-02-Máy Vạt Mặt Trụ"
+        assert _parse_project(HEADER) == "Demo-01-Gehäuse Mühle Prüfung"
 
     def test_project_absent_when_path_has_no_folder(self):
         assert _parse_project("FILE_NAME(\n'part.stp',\n'');") == ""
