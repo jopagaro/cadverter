@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CADVERT — Read a CAD file, get exact answers</title>
+<meta name="description" content="CADVERT reads STEP, IGES and BREP files and answers questions about them — features, exact measurements and mass properties — entirely on your own Mac.">
+<style>:root { --app-accent: #1A1A1A; --app-accent-dark: #5B6CFF; }</style>
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="/cadvert/">
+      <span class="logo-mark">CV</span>
+      <span class="logo-text">CADVERT <span class="logo-sub">· Convivium</span></span>
+    </a>
+    <span class="nav-spacer"></span>
+    <a class="link" href="/cadvert/support/">Support</a>
+    <a class="link" href="/cadvert/privacy/">Privacy</a>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+
+    <h1>Read a CAD file.<br>Get exact answers.</h1>
+    <p class="lede">CADVERT opens a STEP, IGES or BREP file and tells you what is actually
+      in it — every hole, fillet, pocket and boss, with real measurements taken from the
+      geometry. It runs entirely on your Mac.</p>
+
+    <div class="row">
+      <a class="btn" href="{{APP_STORE_URL}}">Download on the Mac App Store</a>
+      <a class="btn btn-secondary" href="/cadvert/support/">How it works</a>
+    </div>
+    <p class="note">{{PRICE}}, paid once. No subscription, no account, no sign-in.</p>
+
+    <h2>Measured, not guessed</h2>
+    <p>CADVERT reads the B-REP solid itself — the same geometry your CAD system stores —
+      rather than a triangle mesh approximation. A hole is round because the surface is a
+      cylinder, and its diameter is that cylinder's radius. Values come out exact:</p>
+    <div class="sample">66 fasteners · M4 × 12 socket head
+Material    stainless steel, 7.9 g/cm³
+Mass        337.1 g total, 5.11 g each
+Volume      42.67 cm³</div>
+    <p>It also reads the assembly tree, so it knows which faces belong to which part and can
+      answer about one component inside a large assembly rather than the whole thing at once.</p>
+
+    <h2>Ask it questions</h2>
+    <p>Analysis needs no AI and no setup — open a file and the breakdown is there. On top of
+      that you can ask questions in plain language, and CADVERT answers by querying the real
+      geometry rather than guessing from a description of it. Three ways to power that:</p>
+
+    <div class="card">
+      <h3>Apple Intelligence <span class="pill">included</span></h3>
+      <p>Runs on your Mac. Costs nothing, needs no key, and nothing leaves the machine.
+         Requires an Apple silicon Mac running macOS 26 with Apple Intelligence turned on.</p>
+    </div>
+    <div class="card">
+      <h3>Your OpenAI or Anthropic key</h3>
+      <p>Bring a key from either provider and CADVERT talks to them directly, billed to you
+         at their rates. Works on any supported Mac, including Intel. Your key is kept in the
+         macOS Keychain.</p>
+    </div>
+    <p class="note">Every Mac that can run CADVERT can use it. If Apple Intelligence is
+      unavailable on your machine, the app says exactly why and you can add your own key
+      instead — and file analysis works either way.</p>
+
+    <h2>Works offline</h2>
+    <p>The complete geometry kernel ships inside the app. There is no server to reach, no
+      account to create, and no network request at all unless you have chosen a provider that
+      needs one. Files you open stay on your Mac.</p>
+
+    <h2>What it reads</h2>
+    <table>
+      <tr><th>STEP · IGES · BREP</th>
+          <td>Full analysis — detected features, exact measurements, spatial relationships,
+              mass properties and assembly structure.</td></tr>
+      <tr><th>STL · OBJ</th>
+          <td>Triangle meshes carry no exact geometry, so these report overall size and shape
+              only. Export STEP from your CAD tool for the full picture.</td></tr>
+    </table>
+
+    <h2>Requirements</h2>
+    <table>
+      <tr><th>macOS</th><td>macOS 14 Sonoma or later.</td></tr>
+      <tr><th>Mac</th><td>Apple silicon or Intel — one universal download covers both.</td></tr>
+      <tr><th>Apple Intelligence</th>
+          <td>Optional. Apple silicon and macOS 26 with the feature enabled. Not required to
+              use the app.</td></tr>
+      <tr><th>Windows</th><td>Planned, not yet available.</td></tr>
+    </table>
+
+    <hr>
+    <p>Questions or trouble? <a href="/cadvert/support/">Support</a> ·
+       <a href="/cadvert/privacy/">Privacy policy</a></p>
+
+  </div>
+</main>
+
+<footer>
+  <div class="wrap footer-inner">
+    <span>© 2026 {{LEGAL_ENTITY}}</span>
+    <span class="footer-spacer"></span>
+    <a href="/">Convivium</a>
+    <a href="/cadvert/support/">Support</a>
+    <a href="/cadvert/privacy/">Privacy</a>
+  </div>
+</footer>
+
+</body>
+</html>

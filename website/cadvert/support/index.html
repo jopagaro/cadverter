@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support — CADVERT</title>
+<meta name="description" content="Help with CADVERT: getting started, supported file types, AI providers, and how to get in touch.">
+<style>:root { --app-accent: #1A1A1A; --app-accent-dark: #5B6CFF; }</style>
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="/cadvert/">
+      <span class="logo-mark">CV</span>
+      <span class="logo-text">CADVERT <span class="logo-sub">· Convivium</span></span>
+    </a>
+    <span class="nav-spacer"></span>
+    <a class="link" href="/cadvert/support/" aria-current="page">Support</a>
+    <a class="link" href="/cadvert/privacy/">Privacy</a>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+
+    <p class="eyebrow">CADVERT</p>
+    <h1>Support</h1>
+    <p class="lede">Everything below is about the Mac app. If your question isn't answered
+      here, <a href="mailto:{{SUPPORT_EMAIL}}">email us</a> — a real person reads it.</p>
+
+    <h2>Getting started</h2>
+    <p>Open a CAD file by dragging it onto the window or pressing <strong>⌘O</strong>. CADVERT
+      reads STEP (.step, .stp), IGES (.iges, .igs), BREP, STL and OBJ files.</p>
+    <p>STEP, IGES and BREP get the full analysis — detected features, exact measurements and
+      spatial relationships. STL and OBJ are triangle meshes with no exact geometry to read,
+      so those report size and shape only. If you need full analysis, export STEP from your
+      CAD tool.</p>
+
+    <h2>Asking questions about a part</h2>
+    <p>Analysis itself needs no AI and no setup. To ask questions, choose a provider in
+      Settings:</p>
+    <div class="card">
+      <h3>Apple Intelligence</h3>
+      <p>Runs on your Mac, costs nothing and needs no key. Requires an Apple silicon Mac
+        running macOS 26 with Apple Intelligence turned on.</p>
+    </div>
+    <div class="card">
+      <h3>OpenAI or Anthropic</h3>
+      <p>Needs an API key from that provider, billed to you at their rates. Your key is stored
+        in your Mac's Keychain and sent only to them.</p>
+    </div>
+
+    <h2>Common questions</h2>
+
+    <h3>Why does it say Apple Intelligence is unavailable?</h3>
+    <p>Three possible reasons, and the app tells you which. Intel Macs cannot run it at any
+      macOS version. On Apple silicon it may be switched off in System Settings → Apple
+      Intelligence &amp; Siri, or the model may still be downloading. In every case you can add
+      your own API key instead, and file analysis works regardless.</p>
+
+    <h3>The app is large. Why?</h3>
+    <p>CADVERT contains a complete geometry kernel — the same class of engine professional CAD
+      systems use — plus the runtime it needs, built for both Apple silicon and Intel in one
+      download. That is what lets it work offline with no server and report exact values
+      rather than estimates. Expect roughly 1.6 GB installed.</p>
+
+    <h3>Does my CAD file leave my Mac?</h3>
+    <p>No. Analysis happens entirely on your machine. If you use OpenAI or Anthropic for
+      questions, a text summary of the geometry is sent to that provider so they can answer;
+      the file itself is never uploaded anywhere. See the
+      <a href="/cadvert/privacy/">privacy policy</a>.</p>
+
+    <h3>How do I free up disk space?</h3>
+    <p>Settings → Storage shows how much cached analysis is stored and has a Clear button.
+      Everything cached rebuilds from your original file, so clearing loses nothing.</p>
+
+    <h3>A large assembly takes a while.</h3>
+    <p>Analysis time scales with the number of faces, not file size. A few thousand faces takes
+      under a minute. It runs on one core, so the machine stays responsive.</p>
+
+    <h3>Is there an iPhone or iPad version?</h3>
+    <p>Not as a standalone app. The geometry engine is too large to run on iOS, so the
+      iPhone/iPad build can only connect to a CADVERT server you run yourself on your own
+      machine. The Mac app is the product; it needs nothing else.</p>
+
+    <h3>Can I use it on Windows?</h3>
+    <p>Not yet. A Windows version is planned.</p>
+
+    <h3>How do I get a refund?</h3>
+    <p>Purchases go through the Mac App Store, so refunds are handled by Apple at
+      <a href="https://reportaproblem.apple.com" rel="noopener">reportaproblem.apple.com</a>.</p>
+
+    <h2>Contact</h2>
+    <p><a href="mailto:{{SUPPORT_EMAIL}}">{{SUPPORT_EMAIL}}</a> — please include your macOS
+      version, whether your Mac is Apple silicon or Intel, and the file type you were working
+      with. That's usually enough to answer on the first reply.</p>
+
+  </div>
+</main>
+
+<footer>
+  <div class="wrap footer-inner">
+    <span>© 2026 {{LEGAL_ENTITY}}</span>
+    <span class="footer-spacer"></span>
+    <a href="/">Convivium</a>
+    <a href="/cadvert/">CADVERT</a>
+    <a href="/cadvert/privacy/">Privacy</a>
+  </div>
+</footer>
+
+</body>
+</html>

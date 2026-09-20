@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — CADVERT</title>
+<meta name="description" content="CADVERT runs entirely on your Mac. Your CAD files are never uploaded, there are no accounts, and we collect nothing.">
+<style>:root { --app-accent: #1A1A1A; --app-accent-dark: #5B6CFF; }</style>
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="/cadvert/">
+      <span class="logo-mark">CV</span>
+      <span class="logo-text">CADVERT <span class="logo-sub">· Convivium</span></span>
+    </a>
+    <span class="nav-spacer"></span>
+    <a class="link" href="/cadvert/support/">Support</a>
+    <a class="link" href="/cadvert/privacy/" aria-current="page">Privacy</a>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+
+    <p class="eyebrow">CADVERT</p>
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated 20 September 2026</p>
+
+    <h2>The short version</h2>
+    <p>CADVERT runs entirely on your Mac. Your CAD files are never uploaded to us. We operate
+      no server, we have no accounts, and we collect nothing about you or your work.</p>
+
+    <h2>What we collect</h2>
+    <p>Nothing. CADVERT has no analytics, no telemetry, no crash reporting and no accounts.
+      We do not know who our users are or which files they open.</p>
+
+    <h2>Your files</h2>
+    <p>CAD files you open are processed on your own machine by the analysis engine built into
+      the app. They are never transmitted to us or to anyone else.</p>
+    <p>While a file is open, the app keeps its analysis and rendered previews in a cache inside
+      the app's own storage on your Mac, so reopening is fast. That cache is removed
+      automatically after a period, and you can delete it at any time in Settings under
+      Storage. Nothing in it leaves your Mac.</p>
+
+    <h2>Artificial intelligence features</h2>
+    <p>Asking questions about a part is optional. Which provider answers is your choice.</p>
+
+    <h3>Apple Intelligence</h3>
+    <p>The default where supported. It runs on your Mac: your question and the part summary
+      are processed on device and are not sent to us, to Apple's servers, or to anyone else.</p>
+
+    <h3>OpenAI or Anthropic</h3>
+    <p>Used only if you enter your own API key. In that case your question and a summary of
+      the part's geometry are sent directly from your Mac to that provider so they can answer.
+      That data goes to them, not to us — we never see it and have no key of our own. Their
+      handling of it is governed by their privacy policy and the terms of your account with
+      them:</p>
+    <ul>
+      <li><a href="https://openai.com/policies/privacy-policy" rel="noopener">OpenAI privacy policy</a></li>
+      <li><a href="https://www.anthropic.com/legal/privacy" rel="noopener">Anthropic privacy policy</a></li>
+    </ul>
+    <p>Your API key is stored in the macOS Keychain on your Mac and is sent only to the
+      provider it belongs to. We never receive it.</p>
+    <p>If you never enter a key and never use Apple Intelligence, the app makes no network
+      requests at all beyond checking that its own engine has started, which happens entirely
+      inside your Mac.</p>
+
+    <h2>Purchases</h2>
+    <p>CADVERT is sold through the Mac App Store. Apple handles payment and gives us
+      anonymised sales figures. We do not receive your name, address or payment details.</p>
+
+    <h2>Children</h2>
+    <p>CADVERT is a professional engineering tool and is not directed at children. We collect
+      no personal information from anyone, including children.</p>
+
+    <h2>Changes</h2>
+    <p>If this policy changes we will update this page and the date above. Because we collect
+      no data, changes are likely to be clarifications rather than new collection.</p>
+
+    <h2>Contact</h2>
+    <p>Questions about this policy: <a href="mailto:{{SUPPORT_EMAIL}}">{{SUPPORT_EMAIL}}</a></p>
+    <p>{{LEGAL_ENTITY}}</p>
+
+  </div>
+</main>
+
+<footer>
+  <div class="wrap footer-inner">
+    <span>© 2026 {{LEGAL_ENTITY}}</span>
+    <span class="footer-spacer"></span>
+    <a href="/">Convivium</a>
+    <a href="/cadvert/">CADVERT</a>
+    <a href="/cadvert/support/">Support</a>
+  </div>
+</footer>
+
+</body>
+</html>
