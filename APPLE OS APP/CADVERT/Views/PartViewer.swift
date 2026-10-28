@@ -43,6 +43,7 @@ struct ViewerPanel: View {
             }
         }
         .clipped()
+        .animation(.easeOut(duration: 0.15), value: showGrid)
         .fileExporter(isPresented: $model.showImageExporter, document: model.imageExport,
                       contentType: model.imageExport?.contentType ?? .png,
                       defaultFilename: model.imageExport?.name) { result in
@@ -58,7 +59,10 @@ struct ViewerPanel: View {
                 Spacer()
                 VStack(alignment: .trailing, spacing: 8) {
                     ViewPresetBar { model.viewCommand = ViewCommand(preset: $0) }
-                    AxisTriad(camera: camera) { model.viewCommand = ViewCommand(preset: $0) }
+                    if showGrid {    // the compass belongs with the axes it names
+                        AxisTriad(camera: camera) { model.viewCommand = ViewCommand(preset: $0) }
+                            .transition(.opacity)
+                    }
                 }
             }
             Spacer()
