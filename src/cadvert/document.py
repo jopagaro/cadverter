@@ -488,6 +488,8 @@ def _feature_block(feat: DetectedFeature) -> list[str]:
 
     elif ftype == "POCKET":
         lines.append(f"  Floor face:  [F{p['floor_face_id']}]")
+        if p.get("depth") is not None:
+            lines.append(f"  Depth:       {fmt(p['depth'])} mm")
         wall_str = ", ".join(f"[F{fid}]" for fid in p.get("wall_face_ids", []))
         if wall_str:
             lines.append(f"  Wall faces:  {wall_str}")
@@ -932,7 +934,8 @@ def _tier0_feature_line(fid: str, feat, units: str) -> str:
         w = f"{fmt(p['width'])}{units}" if p.get("width") else "?"
         return f"  {fid}: CHAMFER       w={w}"
     if t == "POCKET":
-        return f"  {fid}: POCKET        floor=F{p['floor_face_id']}"
+        depth = f"  depth={fmt(p['depth'])}{units}" if p.get("depth") is not None else ""
+        return f"  {fid}: POCKET        floor=F{p['floor_face_id']}{depth}"
     if t == "COUNTERBORE":
         return (f"  {fid}: COUNTERBORE   bore_d={fmt(p['bore_diameter'])}{units}"
                 f"  cbore_d={fmt(p['cbore_diameter'])}{units}"

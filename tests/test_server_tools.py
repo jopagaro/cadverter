@@ -59,3 +59,11 @@ def test_tool_details(session):
 
     missing = server._execute_tool(session, "get_feature", {"feature_id": "hole_99"})
     assert "error" in missing and "hole_1" in missing["available_ids"]
+
+
+def test_rendered_views_served_without_system_mime_tables():
+    """The App Sandbox denies /etc/apache2/mime.types; serving a PNG must not read it."""
+    import mimetypes
+
+    assert mimetypes.knownfiles == []
+    assert mimetypes.guess_type("part_front.png")[0] == "image/png"

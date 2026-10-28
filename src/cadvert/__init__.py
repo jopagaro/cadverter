@@ -9,7 +9,7 @@ Quick start::
     result.to_graph()           # networkx face-adjacency graph
 """
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 from .api import analyze, CadvertResult
 from .ingest import IngestError, PartMetadata, SUPPORTED_EXTENSIONS

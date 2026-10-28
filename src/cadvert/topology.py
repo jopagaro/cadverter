@@ -246,9 +246,14 @@ def _dihedral_angle(
         if angle < 1.0:
             return round(angle, 3), "tangent"
 
-        # Convexity: cross n1 with edge tangent; dot with n2
+        # Convexity: cross n1 with edge tangent; dot with n2.
+        # The tangent must follow the edge as it runs around face1 — the face's material
+        # lies to the left of that direction. The raw curve direction is arbitrary, and
+        # using it flipped the answer for roughly half of all edges.
         d1 = adaptor.DN(mid_param, 1)
         tang = (d1.X(), d1.Y(), d1.Z())
+        if _edge_orientation_in(face1, edge) == TopAbs_REVERSED:
+            tang = (-tang[0], -tang[1], -tang[2])
         cross = (
             n1[1] * tang[2] - n1[2] * tang[1],
             n1[2] * tang[0] - n1[0] * tang[2],
@@ -260,6 +265,17 @@ def _dihedral_angle(
         return round(angle, 3), convexity
     except Exception:
         return None, "unknown"
+
+
+def _edge_orientation_in(face: TopoDS_Face, edge: TopoDS_Edge):
+    """How *edge* is oriented in *face*'s boundary (forward or reversed)."""
+    ex = TopExp_Explorer(face, TopAbs_EDGE)
+    while ex.More():
+        e = ex.Current()
+        if e.IsSame(edge):
+            return e.Orientation()
+        ex.Next()
+    return edge.Orientation()
 
 
 def _face_normal_at(face: TopoDS_Face, pt: gp_Pnt) -> tuple | None:

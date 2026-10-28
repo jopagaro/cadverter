@@ -105,6 +105,11 @@ def detect_features(graph: TopologyGraph) -> list[DetectedFeature]:
     # ── 1. Fillets ────────────────────────────────────────────────────────────
     for fid in torus_fids:
         _emit(_detect_fillet(fid, face_by_id, edge_by_id))
+    # Rounded straight edges — the commonest fillet — are partial cylinders, not tori.
+    for fid in cyl_fids:
+        feat = _detect_edge_fillet(fid, face_by_id, edge_by_id)
+        if feat:
+            _emit(feat)
 
     # ── 2. Chamfers ───────────────────────────────────────────────────────────
     for fid in plane_fids:
@@ -147,7 +152,7 @@ def detect_features(graph: TopologyGraph) -> list[DetectedFeature]:
         _emit(feat)
 
     # ── 7. Pockets ────────────────────────────────────────────────────────────
-    for feat in _detect_pockets(plane_fids, face_by_id, edge_by_id, claimed):
+    for feat in _detect_pockets(plane_fids, face_by_id, edge_by_id, claimed, graph):
         _emit(feat)
 
     # ── 8. Patterns ───────────────────────────────────────────────────────────
@@ -205,7 +210,10 @@ def _classify_cylinder(
     if len(caps) == 0:
         return None
 
-    if len(caps) == 1:
+    # Material inside the cylinder makes it a boss or shaft — never a hole, however many
+    # capped ends it has. (Older graphs without the flag fall back to the cap count.)
+    concave = geom.get("concave")
+    if concave is False or (concave is None and len(caps) == 1):
         return _boss_or_partial(fid, face, geom, axis, radius, diam,
                                 caps, face_by_id, edge_by_id)
 
@@ -229,11 +237,20 @@ def _through_or_blind(
     bot = circle_positions[0]    # lower along axis
     depth = top[0] - bot[0]
 
-    # ── Blind hole detection (topological, not area-based) ────────────────────
-    # A blind cap is one that is NOT on the part boundary.
-    # We determine boundary status using bounding-box proximity.
-    top_is_outer = top[4]
-    bot_is_outer = bot[4]
+    # ── Through or blind: look at what closes each end ─────────────────────────
+    # An end is open if the hole runs out through the face there, closed if that face
+    # is the hole's floor (or a drill point). Judged from the faces themselves, so a
+    # boss or rib standing above the surface doesn't turn through holes "blind" — which
+    # the old bounding-box test did. Falls back to that test only when a face's
+    # orientation is unknown.
+    if len(circle_positions) >= 2 and top[0] - bot[0] > 1e-9:
+        down = tuple(-c for c in axis)
+        top_closed = _end_is_closed(top[1], top[2], toward_interior=down)
+        bot_closed = _end_is_closed(bot[1], bot[2], toward_interior=axis)
+    else:
+        top_closed = bot_closed = None
+    top_is_outer = top[4] if top_closed is None else not top_closed
+    bot_is_outer = bot[4] if bot_closed is None else not bot_closed
     entry_cap = exit_cap = None
 
     if top_is_outer and bot_is_outer:
@@ -284,6 +301,28 @@ def _through_or_blind(
               + (f", {len(caps)} cap edges" if len(caps) > 2 else "")
               + (f" — {std}" if std else ""),
     )
+
+
+def _end_is_closed(cap_edge, adj_face, toward_interior) -> bool | None:
+    """Does *adj_face* close this end of a hole? True for a floor or drill point, False if
+    the hole opens out through it, None when the face's orientation isn't known.
+
+    *toward_interior* points from this end along the axis into the hole.
+    """
+    g = adj_face.geometry
+    kind = g.get("type")
+    if kind == "PLANE":
+        n = g.get("outward_normal")
+        if n is None:
+            return None
+        # A floor's outward normal looks back up into the hole; an exit face looks away.
+        return sum(n[i] * toward_interior[i] for i in range(3)) > 0.5
+    if kind == "CONE":
+        # Drill point: the cone's tip lies beyond this end. Countersink: it lies inside.
+        apex, c = g["apex"], cap_edge.geometry["center"]
+        return sum((apex[i] - c[i]) * toward_interior[i] for i in range(3)) < 0
+    # Breaking out into a curved or blended surface still means the hole is open here.
+    return False
 
 
 def _through_hole_confidence(caps, axis) -> float:
@@ -345,12 +384,14 @@ def _find_coaxial_groups(
     edge_by_id: dict,
 ) -> list[list[int]]:
     """Return lists of cylinder face IDs that share the same axis (within tolerance)."""
-    # Build adjacency: two cylinders are coaxial if they share a circular edge
-    # and their axes are parallel and collinear.
+    # Two cylinders belong together if their axes coincide and they touch — either along
+    # a shared circular edge, or through a flat step face between them, which is how a
+    # counterbore is built (different radii can never share an edge).
     adj: dict[int, set[int]] = defaultdict(set)
     for i, fid_a in enumerate(cyl_fids):
         for fid_b in cyl_fids[i + 1:]:
-            if _are_coaxial(face_by_id[fid_a], face_by_id[fid_b], edge_by_id):
+            if (_are_coaxial(face_by_id[fid_a], face_by_id[fid_b], edge_by_id)
+                    or _share_step_face(face_by_id[fid_a], face_by_id[fid_b], face_by_id, edge_by_id)):
                 adj[fid_a].add(fid_b)
                 adj[fid_b].add(fid_a)
 
@@ -410,6 +451,33 @@ def _are_coaxial(
     return False
 
 
+def _circle_neighbours(face: FaceInfo, edge_by_id: dict) -> set[int]:
+    """Faces adjacent to *face* across its full circular edges."""
+    return {fid for eid in face.edge_ids if _is_real_circle(edge_by_id[eid])
+            for fid in edge_by_id[eid].face_ids if fid != face.id}
+
+
+def _axes_coincide(ga: dict, gb: dict, tol: float = 0.5) -> bool:
+    ax = normalize(ga["axis_dir"])
+    if abs(sum(ax[i] * normalize(gb["axis_dir"])[i] for i in range(3))) < 0.999:
+        return False
+    v = tuple(gb["axis_origin"][i] - ga["axis_origin"][i] for i in range(3))
+    along = sum(v[i] * ax[i] for i in range(3))
+    off = math.sqrt(max(0.0, sum(x * x for x in v) - along * along))
+    return off < tol
+
+
+def _share_step_face(face_a: FaceInfo, face_b: FaceInfo, face_by_id: dict, edge_by_id: dict) -> bool:
+    """Coaxial hole cylinders joined by a planar step face (a counterbore's floor)."""
+    ga, gb = face_a.geometry, face_b.geometry
+    if ga.get("concave") is False or gb.get("concave") is False:
+        return False
+    if not _axes_coincide(ga, gb):
+        return False
+    shared = _circle_neighbours(face_a, edge_by_id) & _circle_neighbours(face_b, edge_by_id)
+    return any(face_by_id[f].geometry.get("type") == "PLANE" for f in shared)
+
+
 def _detect_counterbore(
     group: list[int],
     face_by_id: dict,
@@ -430,6 +498,8 @@ def _detect_counterbore(
     bore_geom  = face_by_id[bore_fid].geometry
     cbore_geom = face_by_id[cbore_fid].geometry
     axis = normalize(bore_geom["axis_dir"])
+    if bore_geom.get("concave") is False or cbore_geom.get("concave") is False:
+        return None   # a stepped shaft or boss, not a hole
 
     # Get all circle edges for both cylinders
     all_circle_edges = []
@@ -451,6 +521,27 @@ def _detect_counterbore(
     total_depth = positions[-1][0] - positions[0][0]
     cbore_depth = _cbore_depth(cbore_fid, bore_fid, face_by_id, edge_by_id, axis)
 
+    # The wide part must be at the entry: entirely on one side of the bore.
+    def span(fid):
+        ps = [sum(edge_by_id[e].geometry["center"][i] * axis[i] for i in range(3))
+              for e in face_by_id[fid].edge_ids if _is_real_circle(edge_by_id[e])]
+        return (min(ps), max(ps)) if ps else (0.0, 0.0)
+    (c_lo, c_hi), (b_lo, b_hi) = span(cbore_fid), span(bore_fid)
+    if not (c_lo >= b_hi - 1e-6 or c_hi <= b_lo + 1e-6):
+        return None
+
+    # Does the bore run out the far side, or stop at a floor?
+    far_down = c_lo >= b_hi - 1e-6            # counterbore above, bore continues downward
+    far_pos = b_lo if far_down else b_hi
+    toward_interior = axis if far_down else tuple(-c for c in axis)
+    through = True
+    for eid in face_by_id[bore_fid].edge_ids:
+        e = edge_by_id[eid]
+        if _is_real_circle(e) and abs(sum(e.geometry["center"][i] * axis[i] for i in range(3)) - far_pos) < 1e-6:
+            others = [f for f in e.face_ids if f != bore_fid]
+            if others:
+                through = not bool(_end_is_closed(e, face_by_id[others[0]], toward_interior))
+
     std = _match_standard(2 * bore_geom["radius"])
     return DetectedFeature(
         feature_type="COUNTERBORE",
@@ -465,12 +556,14 @@ def _detect_counterbore(
             "axis_origin":     bore_geom["axis_origin"],
             "bore_face_id":    bore_fid,
             "cbore_face_id":   cbore_fid,
+            "through":         through,
         },
         confidence=0.90,
         standard_match=std,
         notes=(
             f"Counterbore: bore ∅{fmt(2*bore_geom['radius'])} mm depth={fmt(total_depth)} mm, "
             f"cbore ∅{fmt(2*cbore_geom['radius'])} mm depth≈{fmt(cbore_depth)} mm"
+            + ("" if through else " (blind)")
         ),
     )
 
@@ -482,7 +575,12 @@ def _cbore_depth(
     edge_by_id: dict,
     axis: tuple,
 ) -> float:
-    """Estimate counterbore depth from the shared circle edge position."""
+    """Counterbore depth: the height of the wide cylinder itself."""
+    ps = [sum(edge_by_id[e].geometry["center"][i] * axis[i] for i in range(3))
+          for e in face_by_id[cbore_fid].edge_ids if _is_real_circle(edge_by_id[e])]
+    if len(ps) >= 2:
+        return max(ps) - min(ps)
+    # Fallback for the rare case of cylinders meeting along a shared edge.
     shared_eids = set(face_by_id[cbore_fid].edge_ids) & set(face_by_id[bore_fid].edge_ids)
     for eid in shared_eids:
         e = edge_by_id[eid]
@@ -533,6 +631,27 @@ def _detect_countersink_cone(
         return None
     bore_geom = face_by_id[bore_fid].geometry
 
+    # A countersink widens beyond the bore toward the surface. A drill point — the cone a
+    # twist drill leaves at the bottom of a blind hole — never gets wider than the bore;
+    # it narrows to a tip. Leave that to the hole classifier, which reads it as a closed end.
+    cone_radii = [edge_by_id[e].geometry["radius"] for e in face.edge_ids if _is_real_circle(edge_by_id[e])]
+    if not cone_radii or max(cone_radii) <= bore_geom["radius"] + 0.01:
+        return None
+
+    # Through, or a blind countersunk hole? Look at the bore's far end.
+    cone_edges = set(face.edge_ids)
+    through = True
+    for eid in face_by_id[bore_fid].edge_ids:
+        e = edge_by_id[eid]
+        if eid in cone_edges or not _is_real_circle(e):
+            continue
+        c = e.geometry["center"]
+        toward_cone = tuple(geom["apex"][i] - c[i] for i in range(3))
+        norm = math.sqrt(sum(v * v for v in toward_cone)) or 1.0
+        others = [f for f in e.face_ids if f != bore_fid]
+        if others:
+            through = not bool(_end_is_closed(e, face_by_id[others[0]], tuple(v / norm for v in toward_cone)))
+
     return DetectedFeature(
         feature_type="COUNTERSINK",
         face_ids=[fid, bore_fid],
@@ -544,6 +663,7 @@ def _detect_countersink_cone(
             "apex":             geom["apex"],
             "bore_face_id":     bore_fid,
             "cone_face_id":     fid,
+            "through":          through,
         },
         confidence=0.85,
         notes=(
@@ -584,6 +704,50 @@ def _detect_fillet(
     )
 
 
+def _detect_edge_fillet(
+    fid: int,
+    face_by_id: dict,
+    edge_by_id: dict,
+) -> DetectedFeature | None:
+    """A rounded straight edge: a partial cylinder that blends smoothly (tangent) into
+    the faces either side, sweeping less than a half-turn. A slot's end sweeps exactly a
+    half-turn and a hole a full turn, so neither is mistaken for one."""
+    face = face_by_id[fid]
+    geom = face.geometry
+    edges = [edge_by_id[eid] for eid in face.edge_ids]
+    arcs = [e for e in edges if e.geometry.get("type") == "CIRCLE"]
+    if any(e.geometry.get("is_full_circle") for e in arcs):
+        return None
+    radius = geom["radius"]
+    if not arcs or any(e.geometry["arc_length"] / radius >= math.radians(179) for e in arcs):
+        return None
+    def same_cylinder(other_fid):
+        g = face_by_id[other_fid].geometry
+        return (g.get("type") == "CYLINDER" and abs(g["radius"] - radius) < 1e-6
+                and _axes_coincide(geom, g, tol=1e-3))
+    # The smooth joins must be to two other surfaces — a cylinder split along its seam
+    # (as a slot's end often is) is joined smoothly to another piece of itself.
+    tangent = [e for e in edges if e.convexity == "tangent"
+               and not any(f != fid and same_cylinder(f) for f in e.face_ids)]
+    if len({f for e in tangent for f in e.face_ids if f != fid}) < 2:
+        return None
+    adj_fids = sorted({f for e in tangent for f in e.face_ids if f != fid})
+    convex = geom.get("concave") is False
+    return DetectedFeature(
+        feature_type="FILLET",
+        face_ids=[fid],
+        edge_ids=list(face.edge_ids),
+        parameters={
+            "radius":            radius,
+            "adjacent_face_ids": adj_fids,
+            "axis_dir":          geom["axis_dir"],
+            "convex":            convex,
+        },
+        confidence=0.9,
+        notes=f"Fillet R={fmt(radius)} mm ({'rounded outside edge' if convex else 'inside corner'})",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Chamfer
 # ---------------------------------------------------------------------------
@@ -593,36 +757,42 @@ def _detect_chamfer(
     face_by_id: dict,
     edge_by_id: dict,
 ) -> DetectedFeature | None:
+    """A chamfer is a narrow flat bevel cut along an edge: its two long sides are parallel
+    lines, each an outside corner onto one of the two faces it bevels between, at a
+    shallow angle (a 45° chamfer meets each at 45°, where an ordinary corner is 90°).
+
+    Its short ends may touch any number of faces — bevelling a box edge leaves it touching
+    four — so faces are not counted.
+    """
     face = face_by_id[fid]
     normal = face.geometry["normal"]
-
-    # Must not be axis-aligned
-    if any(abs(abs(normal[i]) - 1.0) < 0.10 for i in range(3)):
+    lines = sorted((edge_by_id[eid] for eid in face.edge_ids
+                    if edge_by_id[eid].geometry.get("type") == "LINE"),
+                   key=lambda e: -e.geometry["length"])
+    if len(lines) < 2:
+        return None
+    a, b = lines[0], lines[1]
+    da, db = a.geometry["direction"], b.geometry["direction"]
+    if abs(sum(da[i] * db[i] for i in range(3))) < 0.999:
+        return None                                   # long sides must be parallel
+    for e in (a, b):
+        if e.convexity != "convex" or e.dihedral_angle is None:
+            return None
+        if not 10.0 <= e.dihedral_angle <= 80.0:      # a bevel, not a square corner
+            return None
+    beveled = {f for e in (a, b) for f in e.face_ids if f != fid}
+    if len(beveled) != 2:
         return None
 
-    adj_fids = set()
-    for eid in face.edge_ids:
-        for afid in edge_by_id[eid].face_ids:
-            if afid != fid:
-                adj_fids.add(afid)
-
-    if len(adj_fids) != 2:
-        return None
-
-    convexities = {
-        edge_by_id[eid].convexity for eid in face.edge_ids
-        if edge_by_id[eid].convexity not in ("unknown", "tangent")
-    }
-    if len(convexities) > 1:
-        return None
-
-    widths = [
-        edge_by_id[eid].geometry["length"]
-        for eid in face.edge_ids
-        if edge_by_id[eid].geometry.get("type") == "LINE"
-    ]
-    width = min(widths) if widths else None
-    confidence = 0.85 if width and width < 10.0 else 0.65
+    # Width: distance between the two long sides.
+    pa, pb = a.geometry["start"], b.geometry["start"]
+    v = tuple(pb[i] - pa[i] for i in range(3))
+    along = sum(v[i] * da[i] for i in range(3))
+    width = math.sqrt(max(0.0, sum(x * x for x in v) - along * along))
+    if width >= a.geometry["length"]:
+        return None                                   # wider than long: a face, not a bevel
+    confidence = 0.9 if width < 10.0 else 0.7
+    angles = sorted(round(e.dihedral_angle, 1) for e in (a, b))
 
     return DetectedFeature(
         feature_type="CHAMFER",
@@ -631,10 +801,11 @@ def _detect_chamfer(
         parameters={
             "normal":            normal,
             "width":             width,
-            "adjacent_face_ids": sorted(adj_fids),
+            "angles":            angles,
+            "adjacent_face_ids": sorted(beveled),
         },
         confidence=confidence,
-        notes=f"Chamfer, width≈{fmt(width)} mm" if width else "Chamfer",
+        notes=f"Chamfer, width {fmt(width)} mm at {angles[0]:g}°/{angles[1]:g}°",
     )
 
 
@@ -755,40 +926,73 @@ def _detect_pockets(
     face_by_id: dict,
     edge_by_id: dict,
     claimed: set[int],
+    graph: TopologyGraph | None = None,
 ) -> list[DetectedFeature]:
-    plane_set = set(plane_fids)
-    visited: set[int] = set()
+    """A pocket is a floor with walls rising from it: a planar face whose every edge to
+    the rest of the part is an inside (concave) corner, plus the walls and blends joined
+    to it by inside corners.
+
+    Edges into features already found (a hole drilled through the floor, a boss standing
+    on it) are ignored, so they don't hide the pocket. Outside corners are never crossed,
+    which keeps the part's own outer shape — and a raised block's base, whose outer edges
+    are outside corners — from being mistaken for a pocket.
+    """
+    vertex_point = {v.id: v.point for v in graph.vertices} if graph is not None else {}
+    used: set[int] = set()
     pockets = []
 
-    for fid in plane_fids:
-        if fid in claimed or fid in visited:
+    for floor_fid in plane_fids:
+        if floor_fid in claimed or floor_fid in used:
             continue
-        result = _planar_cluster(fid, plane_set, face_by_id, edge_by_id, visited)
-        if result is None:
-            continue
-        cluster_fids, internal_eids, boundary_eids = result
-        if len(cluster_fids) < 2:
-            continue
-
-        # All boundary edges must be concave
-        if not all(
-            edge_by_id[eid].convexity in ("concave", "unknown")
-            for eid in boundary_eids
-        ):
+        floor = face_by_id[floor_fid]
+        rim = [edge_by_id[eid] for eid in floor.edge_ids
+               if any(f != floor_fid and f not in claimed for f in edge_by_id[eid].face_ids)]
+        concave_rim = [e for e in rim if e.convexity == "concave"]
+        if len(concave_rim) < 2 or any(e.convexity == "convex" for e in rim):
             continue
 
-        floor_fid = max(cluster_fids, key=lambda f: face_by_id[f].area)
+        # Walk out from the floor across inside corners — and across smooth (tangent)
+        # joins into concave blends, so rounded pocket corners come along.
+        faces, queue = {floor_fid}, [floor_fid]
+        while queue:
+            cur = queue.pop()
+            for eid in face_by_id[cur].edge_ids:
+                e = edge_by_id[eid]
+                for nxt in e.face_ids:
+                    if nxt == cur or nxt in faces or nxt in claimed:
+                        continue
+                    g = face_by_id[nxt].geometry
+                    blend = g.get("type") in ("CYLINDER", "TORUS") and g.get("concave", True)
+                    if e.convexity == "concave" or (e.convexity == "tangent" and blend):
+                        faces.add(nxt)
+                        queue.append(nxt)
+        walls = sorted(faces - {floor_fid})
+        if not walls:
+            continue
+        used |= faces
+
+        params: dict[str, Any] = {
+            "floor_face_id": floor_fid,
+            "wall_face_ids": walls,
+            "n_faces":       len(faces),
+        }
+        n = floor.geometry.get("outward_normal")
+        if n and vertex_point:
+            floor_level = sum(n[i] * floor.geometry["origin"][i] for i in range(3))
+            heights = [sum(n[i] * vertex_point[vid][i] for i in range(3)) - floor_level
+                       for f in walls for eid in face_by_id[f].edge_ids
+                       for vid in edge_by_id[eid].vertex_ids if vid in vertex_point]
+            if heights:
+                params["depth"] = max(heights)
+
+        depth_note = f", depth {fmt(params['depth'])} mm" if "depth" in params else ""
         pockets.append(DetectedFeature(
             feature_type="POCKET",
-            face_ids=list(cluster_fids),
-            edge_ids=list(internal_eids | boundary_eids),
-            parameters={
-                "floor_face_id":  floor_fid,
-                "wall_face_ids":  [f for f in cluster_fids if f != floor_fid],
-                "n_faces":        len(cluster_fids),
-            },
-            confidence=0.75,
-            notes=f"Pocket ({len(cluster_fids)} planar faces)",
+            face_ids=sorted(faces),
+            edge_ids=sorted({eid for f in faces for eid in face_by_id[f].edge_ids}),
+            parameters=params,
+            confidence=0.85,
+            notes=f"Pocket: floor F{floor_fid} with {len(walls)} wall faces{depth_note}",
         ))
 
     return pockets

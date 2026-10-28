@@ -199,6 +199,37 @@ async def test_stream_anthropic_tool_loop(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_stream_anthropic_always_ends_with_an_answer(monkeypatch):
+    """A model that keeps looking things up is made to answer on the last round, not left empty."""
+    pytest.importorskip("anthropic")
+    import anthropic as real
+
+    def lookup(i):
+        tu = _Block(type="tool_use", id=f"toolu_{i}", name="get_feature", input={})
+        return _FakeStream(events=[_Event(type="content_block_start", content_block=tu)],
+                           final=_Block(stop_reason="tool_use", content=[tu]))
+    answer = _FakeStream(
+        events=[_Event(type="content_block_delta", delta=_Block(type="text_delta", text="A lathe."))],
+        final=_Block(stop_reason="end_turn", content=[_Block(type="text", text="A lathe.")]),
+    )
+    rounds = [lookup(i) for i in range(server.MAX_TOOL_ROUNDS)] + [answer]
+    _FakeAnthropic.next_messages = _FakeMessages(rounds)
+    monkeypatch.setattr(real, "AsyncAnthropic", _FakeAnthropic)
+    monkeypatch.setattr(server, "_execute_tool", lambda s, n, a: {"ok": True})
+
+    out = [c async for c in server._stream_anthropic("k", "claude-opus-5", "SYS",
+                                                     [{"role": "user", "content": "what is it?"}], {}, True)]
+    assert "A lathe." in "".join(out) and out[-1] == "data: [DONE]\n\n"
+
+    calls = _FakeAnthropic.next_messages.calls
+    assert len(calls) == server.MAX_TOOL_ROUNDS + 1
+    assert all("tool_choice" not in c for c in calls[:-1])
+    assert calls[-1]["tool_choice"] == {"type": "none"}
+    last_results = calls[-1]["messages"][-1]["content"]
+    assert last_results[-1] == {"type": "text", "text": server._LAST_ROUND_NOTE}
+
+
+@pytest.mark.asyncio
 async def test_stream_anthropic_refusal(monkeypatch):
     pytest.importorskip("anthropic")
     import anthropic as real
@@ -323,3 +354,32 @@ def test_suggested_models_are_current():
     # Retired generations must not linger in the picker.
     assert not any(m.startswith(("gpt-4o", "gpt-4.1")) for m in openai_ids)
     assert "claude-sonnet-4-6" not in anthropic_ids
+
+
+def test_answer_style_for_everyone_chart_format_only_for_rich_clients():
+    plain = server._system_prompt("PART: x")
+    rich = server._system_prompt("PART: x", rich=True)
+    for prompt in (plain, rich):
+        assert "HOW TO ANSWER" in prompt
+        assert prompt.rstrip().endswith("</PART_SUMMARY>")
+    assert "```chart" not in plain      # the web page would show the JSON as raw text
+    assert "```chart" in rich
+
+
+def test_chat_passes_the_rich_flag_to_the_prompt(client, monkeypatch):
+    seen = {}
+
+    async def fake_stream(api_key, model, system_msg, user_messages, session, use_tools):
+        seen["system"] = system_msg
+        yield "data: [DONE]\n\n"
+
+    monkeypatch.setattr(server, "_stream_anthropic", fake_stream)
+    server._sessions["r1"] = {"message_count": 0, "tier0": "PART: x", "is_mesh": False}
+    try:
+        for rich in (False, True):
+            r = client.post("/chat/r1", json={"messages": [{"role": "user", "content": "hi"}], "rich": rich},
+                            headers={"X-Provider": "anthropic", "X-Anthropic-Key": "sk-ant-x"})
+            assert r.status_code == 200
+            assert ("```chart" in seen["system"]) is rich
+    finally:
+        server._sessions.pop("r1", None)

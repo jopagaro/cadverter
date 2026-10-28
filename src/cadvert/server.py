@@ -12,6 +12,7 @@ Endpoints:
 from __future__ import annotations
 import asyncio
 import json
+import mimetypes
 import os
 import shutil
 import tempfile
@@ -36,6 +37,12 @@ from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+
+# Type files by Python's built-in table only. By default mimetypes also reads system tables
+# such as /etc/apache2/mime.types; the Mac App Sandbox denies that read, and the PermissionError
+# turned every rendered view served from /sessions into a 500.
+mimetypes.knownfiles = []
+mimetypes.init()
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -377,6 +384,12 @@ SERVER_ANTHROPIC_KEY: Optional[str] = os.environ.get("ANTHROPIC_API_KEY")
 DEFAULT_OPENAI_MODEL    = "gpt-5.6-terra"
 DEFAULT_ANTHROPIC_MODEL = "claude-opus-5"
 MAX_TOOL_ROUNDS = 8
+# Sent with the results of the last allowed lookup round, so a long investigation still
+# ends in an answer instead of an empty reply.
+_LAST_ROUND_NOTE = (
+    "That was your last lookup. Answer the question now from what you have found, "
+    "and say briefly what you could not check."
+)
 TOOL_NAMES = {t["function"]["name"] for t in CADVERT_TOOLS}
 
 
@@ -420,7 +433,51 @@ def _provider_available(provider: str) -> bool:
         return False
 
 
-def _system_prompt(tier0: str) -> str:
+_ANSWER_STYLE = (
+    "HOW TO ANSWER:\n"
+    "- Open with the direct answer in one or two sentences: the number, the verdict, the "
+    "recommendation. Then give only the detail the question needs.\n"
+    "- Don't narrate your process (\"Let me…\", \"I'll pull…\", \"Now I'll check…\"). Call tools "
+    "without commentary — the app shows tool activity — and write your reply once you have "
+    "what you need.\n"
+    "- Prefer short bullets to long paragraphs. Keep replies under about 250 words unless the "
+    "user asks for more.\n"
+    "- Give units with every value. Round for readability (∅6.6 mm) but keep full precision "
+    "where it matters, such as fits and tolerances.\n"
+    "- Cite face and feature IDs (F12, hole_3) where the reader needs to find something, not "
+    "in every sentence.\n"
+    "- If something is uncertain or the geometry doesn't show it, say so plainly.\n"
+)
+
+# Only for clients that render tables and charts (the Mac/iPad app sends "rich": true);
+# the web page's renderer would show these as raw text.
+_RICH_FORMATTING = (
+    "\nFORMATTING (the app renders this):\n"
+    "- Markdown: ### headings for answers with several parts, **bold** for key values, "
+    "bullet or numbered lists, `code` for IDs.\n"
+    "- Use a table to compare several items (sizes, counts, features) — at most about 8 rows "
+    "and 5 columns. Summarise long lists rather than listing everything.\n"
+    "- Sizes, dimensions, hole lists and other specs go in a table, sorted by size (smallest "
+    "first) — never a chart. Different sizes aren't competing quantities; a bar chart would rank "
+    "them as if they were.\n"
+    "- Most replies need no chart. Use one only when the picture shows something a table can't: "
+    "how a whole splits into parts (e.g. the feature mix), the spread of one measurement across "
+    "the part (e.g. wall thickness), or a value changing along something. Never chart data a "
+    "table in the same reply already shows.\n"
+    "- To add a chart, write a fenced block whose language is `chart`, containing only JSON:\n"
+    "```chart\n"
+    '{"type": "donut", "title": "Feature mix", '
+    '"labels": ["Fillet", "Blind hole", "Through hole", "Pocket"], "values": [976, 110, 59, 30]}\n'
+    "```\n"
+    '  "type" is "donut" (parts of one whole, up to 6 slices), "column" (counts across bands of '
+    'one measurement, e.g. wall thickness 2–4, 4–6, 6–8 mm), "line" (a value along an ordered x) '
+    'or "bar" (horizontal, for long category names). Add "x" and "y" axis names where useful. For '
+    'several series use "series": [{"name": "Min", "values": [...]}, ...] instead of "values". Up '
+    "to 12 labels and 6 series; values are plain numbers. At most one chart per reply.\n"
+)
+
+
+def _system_prompt(tier0: str, rich: bool = False) -> str:
     return (
         "You are an expert mechanical engineer and manufacturing consultant. "
         "You have direct access to the exact B-REP geometry of a CAD part through tool calls. "
@@ -438,10 +495,14 @@ def _system_prompt(tier0: str) -> str:
         "- When asked about adjacent faces or local topology, call get_neighbors().\n"
         "- Chain multiple tool calls in one response when needed — e.g. get all "
         "hole features then measure distances between them.\n"
+        "- Lookups come in a limited number of rounds: ask for everything you need "
+        "in parallel, and answer broad questions from the summary when it is enough.\n"
         "- Reference faces as F12, edges as E5, features by ID (hole_1, fillet_3).\n"
         "- Units are specified in the document header. Be precise with numbers.\n"
         "- For mesh files (STL/OBJ): exact geometry is unavailable — say so clearly.\n\n"
-        f"<PART_SUMMARY>\n{tier0}\n</PART_SUMMARY>"
+        + _ANSWER_STYLE
+        + (_RICH_FORMATTING if rich else "")
+        + f"\n<PART_SUMMARY>\n{tier0}\n</PART_SUMMARY>"
     )
 
 
@@ -606,7 +667,7 @@ async def chat(
 
     session["message_count"] = session.get("message_count", 0) + 1
     tier0      = session.get("tier0") or session.get("hsd", "")
-    system_msg = _system_prompt(tier0)
+    system_msg = _system_prompt(tier0, rich=bool(body.get("rich")))
     use_tools  = not session.get("is_mesh", False)
 
     if provider == "anthropic":
@@ -714,12 +775,15 @@ async def _stream_openai(api_key: str, model: str, system_msg: str, user_message
             accumulated_content = ""
             accumulated_tool_calls = {}
             finish_reason = None
+            last = rounds == MAX_TOOL_ROUNDS
+            if last:
+                openai_messages.append({"role": "user", "content": _LAST_ROUND_NOTE})
 
             stream = await client.chat.completions.create(
                 model=model,
                 messages=openai_messages,
                 tools=tools,
-                tool_choice="auto",
+                tool_choice="none" if last else "auto",
                 max_completion_tokens=2048,
                 stream=True,
             )
@@ -783,6 +847,8 @@ async def _stream_anthropic(api_key: str, model: str, system_msg: str, user_mess
             kwargs: dict = dict(model=model, max_tokens=8192, system=system_msg, messages=messages)
             if tools:
                 kwargs["tools"] = tools
+                if _round == MAX_TOOL_ROUNDS:
+                    kwargs["tool_choice"] = {"type": "none"}
 
             async with client.messages.stream(**kwargs) as stream:
                 async for event in stream:
@@ -817,6 +883,8 @@ async def _stream_anthropic(api_key: str, model: str, system_msg: str, user_mess
                     "content":     json.dumps(result_data),
                     "is_error":    "error" in result_data,
                 })
+            if _round + 1 == MAX_TOOL_ROUNDS:
+                results.append({"type": "text", "text": _LAST_ROUND_NOTE})
             messages.append({"role": "user", "content": results})
 
         yield "data: [DONE]\n\n"

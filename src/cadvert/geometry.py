@@ -24,6 +24,7 @@ from OCP.GeomAbs import (
     GeomAbs_BezierCurve,
 )
 from OCP.TopoDS import TopoDS_Face, TopoDS_Edge
+from OCP.TopAbs import TopAbs_REVERSED
 from OCP.BRep import BRep_Tool
 from OCP.gp import gp_Pnt
 
@@ -36,11 +37,15 @@ def extract_face_geometry(face: TopoDS_Face) -> dict[str, Any]:
     """Return a dict describing the analytical geometry of *face*."""
     adaptor = BRepAdaptor_Surface(face, True)
     stype = adaptor.GetType()
+    # A solid's faces are oriented so that, with this flag applied, their normal points out
+    # of the material. The raw surface normal ignores it, so features that depend on which
+    # side the material is on (hole vs boss, open vs closed hole end) need it recorded.
+    reversed_ = face.Orientation() == TopAbs_REVERSED
 
     if stype == GeomAbs_Plane:
-        return _plane(adaptor)
+        return _plane(adaptor, reversed_)
     elif stype == GeomAbs_Cylinder:
-        return _cylinder(adaptor)
+        return _cylinder(adaptor, reversed_)
     elif stype == GeomAbs_Cone:
         return _cone(adaptor)
     elif stype == GeomAbs_Sphere:
@@ -53,7 +58,7 @@ def extract_face_geometry(face: TopoDS_Face) -> dict[str, Any]:
         return {"type": "OTHER", "raw_type": str(stype)}
 
 
-def _plane(adaptor: BRepAdaptor_Surface) -> dict:
+def _plane(adaptor: BRepAdaptor_Surface, reversed_: bool = False) -> dict:
     pln = adaptor.Plane()
     ax = pln.Axis()
     loc = ax.Location()
@@ -67,19 +72,27 @@ def _plane(adaptor: BRepAdaptor_Surface) -> dict:
         "normal": normal,
         "origin": origin,
         "d": d,  # offset: n·x = d
+        # Points out of the material, unlike `normal` (the surface's own direction).
+        "outward_normal": tuple(-c for c in normal) if reversed_ else normal,
     }
 
 
-def _cylinder(adaptor: BRepAdaptor_Surface) -> dict:
+def _cylinder(adaptor: BRepAdaptor_Surface, reversed_: bool = False) -> dict:
     cyl = adaptor.Cylinder()
     ax = cyl.Axis()
     loc = ax.Location()
     direction = ax.Direction()
+    # A right-handed cylinder's surface normal points away from its axis; a reversed face
+    # flips that. If the outward (out-of-material) normal points toward the axis, the
+    # material surrounds the cylinder — a hole. Otherwise the material is inside — a boss
+    # or shaft.
+    outward_away_from_axis = cyl.Position().Direct() != reversed_
     return {
         "type": "CYLINDER",
         "axis_origin": (loc.X(), loc.Y(), loc.Z()),
         "axis_dir": (direction.X(), direction.Y(), direction.Z()),
         "radius": cyl.Radius(),
+        "concave": not outward_away_from_axis,
     }
 
 
