@@ -3,7 +3,13 @@ import Security
 
 /// Minimal generic-password Keychain wrapper for the user's OpenAI key.
 enum KeychainStore {
-    private static let service = "com.cadvert.CADVERT"
+    // Development builds keep their own entry. Sharing the shipped app's would make macOS ask
+    // for the login password every time a differently signed test build reads the user's key.
+    #if DEBUG
+    private static let service = "com.conviviumllc.cadvert.debug"
+    #else
+    private static let service = "com.conviviumllc.cadvert"
+    #endif
 
     static func read(_ account: String) -> String? {
         let query: [String: Any] = [

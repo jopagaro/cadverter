@@ -17,9 +17,9 @@
 			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.cadvert.step</string>
-				<string>com.cadvert.iges</string>
-				<string>com.cadvert.brep</string>
+				<string>com.conviviumllc.cadvert.step</string>
+				<string>com.conviviumllc.cadvert.iges</string>
+				<string>com.conviviumllc.cadvert.brep</string>
 				<string>public.standard-tesselated-geometry-format</string>
 				<string>public.geometry-definition-format</string>
 			</array>
@@ -39,6 +39,8 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.developer-tools</string>
 	<key>LSMinimumSystemVersion</key>
@@ -51,7 +53,7 @@
 		<true/>
 	</dict>
 	<key>NSHumanReadableCopyright</key>
-	<string>© 2026 CADVERT</string>
+	<string>© 2026 Convivium LLC</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -85,7 +87,7 @@
 			<key>UTTypeDescription</key>
 			<string>STEP CAD file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.cadvert.step</string>
+			<string>com.conviviumllc.cadvert.step</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -109,7 +111,7 @@
 			<key>UTTypeDescription</key>
 			<string>IGES CAD file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.cadvert.iges</string>
+			<string>com.conviviumllc.cadvert.iges</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -132,7 +134,7 @@
 			<key>UTTypeDescription</key>
 			<string>OpenCASCADE BREP file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.cadvert.brep</string>
+			<string>com.conviviumllc.cadvert.brep</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>

@@ -91,6 +91,8 @@ struct AboutView: View {
                                 Button("Open a CAD file →") { model.sheet = nil; model.showFileImporter = true }
                                     .buttonStyle(PrimaryButtonStyle())
                             }
+                            Button("Open-source acknowledgements") { model.sheet = .acknowledgements }
+                                .buttonStyle(NavLinkStyle())
                         }
                         .padding(.bottom, 20)
                     }

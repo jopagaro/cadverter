@@ -3,7 +3,7 @@ XCODEPROJ = CADVERT.xcodeproj
 SCHEME    = CADVERT
 BUILD     = build
 
-.PHONY: generate icon build-mac build-ios test run-mac engine engine-intel engine-all refresh \
+.PHONY: generate icon build-mac build-ios test run-mac engine engine-intel engine-all refresh licenses \
         archive-mac archive-universal release-arm64 release-intel release-both dmg clean
 
 generate:            ## Regenerate CADVERT.xcodeproj from project.yml
@@ -37,12 +37,15 @@ engine-all: engine engine-intel  ## Build both engines (needed for a universal b
 refresh:             ## Reinstall current cadvert into existing engines (run before archiving)
 	./scripts/refresh-engine.sh
 
-archive-mac: generate ## Release archive for this Mac's architecture only
+licenses:            ## Rebuild the in-app Acknowledgements from the bundled engines
+	python3 scripts/collect-licenses.py
+
+archive-mac: generate licenses ## Release archive for this Mac's architecture only
 	CADVERT_ENGINE_ARCHS=$(shell uname -m) xcodebuild -project $(XCODEPROJ) -scheme $(SCHEME) \
 	  -destination 'generic/platform=macOS' -configuration Release ARCHS=$(shell uname -m) ONLY_ACTIVE_ARCH=NO \
 	  -archivePath $(BUILD)/CADVERT.xcarchive archive | tail -5
 
-archive-universal: generate ## Universal archive carrying BOTH engines (~1.6 GB — for the App Store)
+archive-universal: generate licenses ## Universal archive carrying BOTH engines (~1.6 GB — for the App Store)
 	CADVERT_ENGINE_ARCHS="arm64 x86_64" xcodebuild -project $(XCODEPROJ) -scheme $(SCHEME) \
 	  -destination 'generic/platform=macOS' -configuration Release ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
 	  -archivePath $(BUILD)/CADVERT-universal.xcarchive archive | tail -5

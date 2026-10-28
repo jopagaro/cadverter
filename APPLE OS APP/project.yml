@@ -2,7 +2,7 @@
 # Regenerate the Xcode project with:  xcodegen generate
 name: CADVERT
 options:
-  bundleIdPrefix: com.cadvert
+  bundleIdPrefix: com.conviviumllc
   xcodeVersion: "26.0"
   createIntermediateGroups: true
   generateEmptyDirectories: true
@@ -17,7 +17,7 @@ settings:
     DEVELOPMENT_TEAM: AZVC5A74YD
     CODE_SIGN_STYLE: Automatic
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "6"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
@@ -40,7 +40,10 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.developer-tools
-        NSHumanReadableCopyright: "© 2026 CADVERT"
+        # Only standard HTTPS (to OpenAI/Anthropic, with the user's own key) — exempt from export
+        # documentation, so App Store Connect stops asking on every upload.
+        ITSAppUsesNonExemptEncryption: false
+        NSHumanReadableCopyright: "© 2026 Convivium LLC"
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         LSSupportsOpeningDocumentsInPlace: true
         UISupportsDocumentBrowser: false
@@ -59,19 +62,19 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         UTImportedTypeDeclarations:
-          - UTTypeIdentifier: com.cadvert.step
+          - UTTypeIdentifier: com.conviviumllc.cadvert.step
             UTTypeDescription: STEP CAD file
             UTTypeConformsTo: [public.data, public.content]
             UTTypeTagSpecification:
               public.filename-extension: [step, stp]
               public.mime-type: [model/step, application/step]
-          - UTTypeIdentifier: com.cadvert.iges
+          - UTTypeIdentifier: com.conviviumllc.cadvert.iges
             UTTypeDescription: IGES CAD file
             UTTypeConformsTo: [public.data, public.content]
             UTTypeTagSpecification:
               public.filename-extension: [iges, igs]
               public.mime-type: [model/iges]
-          - UTTypeIdentifier: com.cadvert.brep
+          - UTTypeIdentifier: com.conviviumllc.cadvert.brep
             UTTypeDescription: OpenCASCADE BREP file
             UTTypeConformsTo: [public.data, public.content]
             UTTypeTagSpecification:
@@ -81,14 +84,14 @@ targets:
             CFBundleTypeRole: Viewer
             LSHandlerRank: Alternate
             LSItemContentTypes:
-              - com.cadvert.step
-              - com.cadvert.iges
-              - com.cadvert.brep
+              - com.conviviumllc.cadvert.step
+              - com.conviviumllc.cadvert.iges
+              - com.conviviumllc.cadvert.brep
               - public.standard-tesselated-geometry-format
               - public.geometry-definition-format
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.cadvert.CADVERT
+        PRODUCT_BUNDLE_IDENTIFIER: com.conviviumllc.cadvert
         PRODUCT_NAME: CADVERT
         INFOPLIST_KEY_CFBundleDisplayName: CADVERT
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -123,7 +126,7 @@ targets:
       - target: CADVERT
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.cadvert.CADVERTTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.conviviumllc.cadvert.tests
         GENERATE_INFOPLIST_FILE: YES
         "TEST_HOST[sdk=macosx*]": "$(BUILT_PRODUCTS_DIR)/CADVERT.app/Contents/MacOS/CADVERT"
 

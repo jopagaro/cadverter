@@ -21,9 +21,9 @@ enum SupportedFormat: String, CaseIterable {
     }
 
     // Uniform types for the file importer / drop targets.
-    static let stepType = UTType(importedAs: "com.cadvert.step")
-    static let igesType = UTType(importedAs: "com.cadvert.iges")
-    static let brepType = UTType(importedAs: "com.cadvert.brep")
+    static let stepType = UTType(importedAs: "com.conviviumllc.cadvert.step")
+    static let igesType = UTType(importedAs: "com.conviviumllc.cadvert.iges")
+    static let brepType = UTType(importedAs: "com.conviviumllc.cadvert.brep")
     static let stlType  = UTType("public.standard-tesselated-geometry-format") ?? .data
     static let objType  = UTType("public.geometry-definition-format") ?? .data
 

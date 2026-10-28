@@ -11,7 +11,7 @@ account and can't be done from the code side.
 - [ ] Accept the current Apple Developer Program Licence Agreement (submissions silently
       block until you do).
 - [ ] Create an **Apple Distribution** certificate.
-- [ ] Create a **Mac App Store provisioning profile** for `com.cadvert.CADVERT`.
+- [ ] Create a **Mac App Store provisioning profile** for `com.conviviumllc.cadvert`.
 - [ ] Apply for the **Small Business Program** — it cuts Apple's commission from 30% to 15%
       under $1M a year. It is **not retroactive**, so do it before your first sale.
 
@@ -22,17 +22,32 @@ security find-identity -v -p codesigning | grep "Apple Distribution"
 
 ## 2. Hosting — **[you]**
 
-- [ ] Publish the privacy policy somewhere public (`PRIVACY-POLICY.md`) and note the URL.
-- [ ] Publish the support page (`SUPPORT-PAGE.md`) and note the URL.
+- [ ] Run `website/fill.sh` (`site.config` is already filled in: admin@conviviumllc.com,
+      Convivium LLC, $9.99).
+- [ ] conviviumllc.com runs WordPress, so publish as pages, not files: a **CADVERT** page
+      (slug `cadvert`) with child pages **Privacy Policy** (`privacy`) and **Support**
+      (`support`), each a Custom HTML block pasted from `website/dist/wordpress/`. Steps in
+      `website/README.md`.
+- [x] Published and checked: `https://conviviumllc.com/cadvert/privacy` and
+      `https://conviviumllc.com/cadvert/support` (no trailing slash — that's how WordPress
+      serves them). App Store Connect takes these plus `https://conviviumllc.com/cadvert`
+      as the Marketing URL; see the URL table in `APP-STORE-LISTING.md`.
 
-Both URLs are required fields; you cannot submit without them.
+Both URLs are required fields; you cannot submit without them, and Apple opens them during
+review.
 
 ## 3. Build
 
 - [ ] `make engine-all` — both architecture engines present (slow, downloads ~800 MB each).
 - [ ] **`./scripts/refresh-engine.sh`** — reinstall the current cadvert into them.
-- [ ] `make archive-universal` — produces the universal archive (~1.6 GB).
-- [ ] In Xcode Organizer: Distribute App → App Store Connect → Upload.
+- [ ] `make archive-universal` — produces the universal archive (~1.6 GB). It also rebuilds
+      the in-app Acknowledgements from the engines (`make licenses`); if that changes
+      `CADVERT/Resources/Acknowledgements.json`, commit it.
+- [ ] In Xcode Organizer: **Validate App** first. It runs Apple's upload checks (signing,
+      sandbox entitlements on every executable, Info.plist) without submitting anything.
+      This matters more than usual here, because the engine's binaries live in
+      `Contents/Resources`, an unusual place for code.
+- [ ] Then Distribute App → App Store Connect → Upload.
 
 **Do not skip the refresh step.** The engines are built once and reused, so they keep
 whatever version of cadvert was current when they were built. Shipping a stale one is easy
@@ -50,10 +65,11 @@ Expect the upload to be slow. It's mostly the two bundled engines.
 
 ## 4. App Store Connect — **[you]**
 
-- [ ] New macOS app, bundle ID `com.cadvert.CADVERT`, SKU of your choosing.
+- [ ] New macOS app, bundle ID `com.conviviumllc.cadvert`, SKU of your choosing.
 - [ ] Paste name, subtitle, description, keywords from `APP-STORE-LISTING.md`.
-- [ ] Price: $49 (Tier varies by storefront; Apple converts).
-- [ ] Upload screenshots — see `SCREENSHOTS.md` for what to capture and at which sizes.
+- [ ] Price: USD 9.99 in Pricing and Availability (Apple converts it for other storefronts).
+- [ ] Upload screenshots from `screenshots/app-store/` — they must be exactly 2880×1800 (or
+      another size Apple lists). See `SCREENSHOTS.md`.
 - [ ] Paste the review notes from `REVIEW-NOTES.md` into App Review Information → Notes.
       **Do not skip this.** It explains the bundled Python interpreter before a reviewer
       finds it and wonders whether you are downloading executable code.
@@ -63,12 +79,12 @@ Expect the upload to be slow. It's mostly the two bundled engines.
 
 ## 5. Export compliance
 
-You will be asked whether the app uses encryption. It does not implement any of its own,
-but it does make HTTPS calls to OpenAI and Anthropic when the user supplies a key.
+Already answered in the app: Info.plist sets `ITSAppUsesNonExemptEncryption` to `NO`, so App
+Store Connect won't ask on each upload.
 
-That falls under the standard exemption for apps using only HTTPS. Answer that you use
-encryption, then that it qualifies for the exemption. This avoids the annual self-
-classification report. If in doubt, Apple's own questionnaire walks you through it.
+The reasoning, if anyone asks: CADVERT implements no encryption of its own. It makes HTTPS
+calls to OpenAI and Anthropic only when the user supplies a key, which falls under the
+standard exemption for apps that use only HTTPS.
 
 ## 6. Verified already — you do not need to retest these
 
@@ -80,6 +96,14 @@ classification report. If in doubt, Apple's own questionnaire walks you through 
   and the app selects the right one at runtime.
 - **Cached parts land inside the app container**, where Apple expects regenerable data, and
   the Storage control in Settings reports and clears them.
+- **The bundled interpreter is itself sandboxed** (`app-sandbox` + `inherit`); the build
+  stops if it isn't. Without this, validation rejects the upload even though the app runs.
+- **No keys, no CAD files, no build-machine paths ship.** Searched every file in the bundle
+  for your actual key values, for any key-shaped string, for CAD formats, and for your
+  username.
+- **Release builds offer only the bundled engine.** The remote-server option and custom
+  Python field exist in Debug builds only, so nothing in the shipped app can send a file
+  off the Mac.
 
 ## 7. After approval
 

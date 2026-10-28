@@ -57,5 +57,5 @@ Not yet. A Windows version is planned.
 
 ## Contact
 
-[your email] — please include the macOS version, whether your Mac is Apple silicon or
+admin@conviviumllc.com — please include the macOS version, whether your Mac is Apple silicon or
 Intel, and the file type you were working with.

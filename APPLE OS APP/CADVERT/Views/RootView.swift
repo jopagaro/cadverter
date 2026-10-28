@@ -132,6 +132,7 @@ struct SheetHost: View {
             case .keyNeeded:   KeyNeededView()
             case .appleUnavailable: AppleUnavailableView()
             case .engineLog:   EngineLogView()
+            case .acknowledgements: AcknowledgementsView()
             }
         }
         .background(p.surface)

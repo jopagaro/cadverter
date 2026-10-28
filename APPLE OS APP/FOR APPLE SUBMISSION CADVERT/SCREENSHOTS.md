@@ -1,7 +1,9 @@
 # Screenshots — what to capture
 
-Apple accepts **1280×800, 1440×900, 2560×1600 or 2880×1800** for Mac apps, up to 10 per
-listing. Your Mac is Retina, so a window capture is already 2× and lands in range.
+Apple accepts **only 1280×800, 1440×900, 2560×1600 or 2880×1800** for Mac apps, up to 10
+per listing. A window capture is whatever size the window happens to be (2360×1520, say),
+which is almost never one of those — App Store Connect rejects it. Every capture goes
+through the composer at the bottom of this page before upload.
 
 ## How to capture a clean window (no desktop, no personal files)
 
@@ -38,17 +40,23 @@ the repo means a published repository can never leak a design that is not yours.
 
 ## One caution
 
-The most impressive capture I made shows your Vietnamese client's assembly, including its
-part number and a full breakdown of its components. **Don't publish that unless you have
-the customer's permission** — a parts list is commercially sensitive and it would be on a
-public product page indefinitely. Use your own test part, or a part you own outright.
+Only show parts you own. The large assembly used while developing CADVERT was downloaded
+from GrabCAD — it is someone else's model, with their part numbers in it, and a shared
+download is not permission to use it in your marketing. `samples/test_block_with_holes.step`
+(generated in this repo) or a part you designed yourself is safe.
 
-## Optional polish
+## Make them the right size (required)
 
-If you want captions above each image, there is a composer at `make-screenshots.swift`:
+`make-screenshots.swift` places a window capture on a 2880×1800 canvas with a soft shadow,
+and optionally a headline above it:
 
 ```
-swift make-screenshots.swift out.png window-capture.png "Exact geometry, not a guess"
+swift make-screenshots.swift screenshots/app-store/03-settings.png screenshots/settings.png
+swift make-screenshots.swift screenshots/app-store/04-answer.png screenshots/answer.png "Ask it anything about the part"
 ```
 
-It places the capture on a 2880×1800 canvas with a soft shadow and an optional headline.
+Upload the files from `screenshots/app-store/`. The two you captured are already done:
+`01-hero-2880x1800.png` and `02-geometry-document-2880x1800.png`.
+
+The hero shot shows the empty start screen. It's valid, but shot 1 above — a part already
+analysed, features down the side — does far more to sell the app if you take one.

@@ -2,8 +2,19 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Entitlements for the bundled Python interpreter (Hardened Runtime).
-	     It loads hundreds of compiled extensions (OCCT, VTK, numpy) and uses ctypes. -->
+	<!-- Entitlements for the bundled Python interpreter inside the sandboxed (Release) app.
+	     App Store validation requires every executable in the bundle to carry app-sandbox, and
+	     a helper the app launches must also carry inherit so it runs in the app's sandbox.
+	     Paired with CADVERT-macOS.entitlements; sign-engine.sh picks this file when the app
+	     itself is sandboxed. Never use it for an unsandboxed parent: an inherit helper traps
+	     at launch when its parent isn't sandboxed (engine-debug.entitlements covers that). -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.inherit</key>
+	<true/>
+	<!-- Hardened Runtime: the interpreter loads hundreds of compiled extensions (OCCT, VTK,
+	     numpy), and Python's foreign-function library (libffi, used by ctypes) can allocate
+	     executable memory for callbacks. -->
 	<key>com.apple.security.cs.disable-library-validation</key>
 	<true/>
 	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>

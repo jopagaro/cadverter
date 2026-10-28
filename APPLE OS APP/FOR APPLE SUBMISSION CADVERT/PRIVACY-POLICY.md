@@ -6,13 +6,13 @@ on your site and put that URL in App Store Connect.
 It is short because the app genuinely does very little with data. Resist padding it — a
 policy claiming collection you don't do is worse than a brief honest one.
 
-Replace `[your LLC]`, `[your email]` and the date before publishing.
+The published version is `website/cadvert/privacy/` — keep the two in step.
 
 ---
 
 # CADVERT Privacy Policy
 
-_Last updated: [date]_
+_Last updated: 20 September 2026_
 
 ## The short version
 
@@ -75,6 +75,6 @@ data, changes are likely to be clarifications rather than new collection.
 
 ## Contact
 
-Questions about this policy: [your email]
+Questions about this policy: admin@conviviumllc.com
 
-[your LLC]
+Convivium LLC

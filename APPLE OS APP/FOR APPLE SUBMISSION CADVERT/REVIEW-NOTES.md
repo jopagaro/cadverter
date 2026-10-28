@@ -47,12 +47,22 @@ If you are testing on a Mac with Apple Intelligence enabled, you can ask a quest
 setup at all. If not, the app explains why and offers the key field; the analysis features
 above remain fully usable.
 
+**Why the app has com.apple.security.network.server.** The geometry engine runs as a
+local HTTP service inside the app. On launch, CADVERT starts its bundled engine
+(CADVERT.app/Contents/Resources/engine-<architecture>/bin/python3.12 — sandboxed, signed
+with com.apple.security.inherit) as a child process. The engine opens a listening socket
+on 127.0.0.1 only, on a random free port, and the app's interface sends every analysis
+request to it over HTTP. It never listens on any external network interface and cannot
+be reached from another machine. The listening socket is created by the bundled engine,
+not the main executable, which is why automated analysis does not find it there. Without
+this entitlement the sandbox blocks the engine from listening and no file can be analysed.
+
 **Network use.** Only two things ever leave the machine, both optional and user-initiated:
 a request to OpenAI or Anthropic when the user has entered their own key and asks a
 question, and a request to that provider listing which models the key can use. There is no
 telemetry, no analytics and no server of ours.
 
-**Contact.** [your email] — happy to walk through the engine architecture if useful.
+**Contact.** admin@conviviumllc.com — happy to walk through the engine architecture if useful.
 
 ---
 
@@ -77,10 +87,19 @@ telemetry, no analytics and no server of ours.
 | `network.server` | The engine binds a loopback port. |
 | `files.user-selected.read-write` | Opening the CAD file the user chose. |
 | `cs.disable-library-validation` | The interpreter loads several hundred third-party compiled extensions (OpenCASCADE, VTK, numpy). They are re-signed with the app's identity at build time, but library validation still rejects them without this. |
-| `cs.allow-unsigned-executable-memory` | Required by the Python runtime. |
+| `cs.allow-unsigned-executable-memory` | Python's foreign-function library (libffi, used by ctypes) can allocate executable memory for callbacks. Kept as a precaution: tested without it, everything works on Apple silicon, but it could not be tested on an Intel Mac. |
 
-If a reviewer questions the last two, the honest answer is that they are what a bundled
-CPython requires; they are also the two most likely to draw a question, so expect it.
+The two `cs.*` entries are the most likely to draw a question. Answer with the reasons
+above as written — in particular, don't claim the second is strictly *required*; it was
+shown not to be on Apple silicon.
+
+**The bundled interpreter's own entitlements** (`scripts/engine.entitlements`) are
+`app-sandbox` + `inherit`, plus the same two `cs.*` keys. App Store validation requires
+`app-sandbox` on every executable in the bundle, and `inherit` makes the interpreter run
+inside the app's sandbox rather than a new one. Debug builds sign it with
+`scripts/engine-debug.entitlements` instead, because an `inherit` helper crashes at launch
+when its parent isn't sandboxed. `scripts/sign-engine.sh` picks the right file and stops
+the build if the Release interpreter ends up without `app-sandbox`.
 
 **What to have ready**
 - A sample STEP file attached to the submission (`samples/test_block_with_holes.step` in

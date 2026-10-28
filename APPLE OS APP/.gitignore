@@ -22,4 +22,10 @@ Engine/downloads/
 
 # Screenshots are made from whatever part you happen to open — keep other
 # people's models and their part numbers out of the repo.
-FOR APPLE SUBMISSION CADVERT/screenshots/*.png
+FOR APPLE SUBMISSION CADVERT/screenshots/**/*.png
+
+# Review attachment, regenerated from samples/ when needed
+FOR APPLE SUBMISSION CADVERT/*.zip
+
+# Demo part for screenshots — regenerate with demo/make-demo-part.py
+FOR APPLE SUBMISSION CADVERT/demo/*.step

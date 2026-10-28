@@ -65,7 +65,8 @@ struct CadvertClient {
         if let apiKey, !apiKey.isEmpty {
             req.setValue(apiKey, forHTTPHeaderField: provider == .anthropic ? "X-Anthropic-Key" : "X-OpenAI-Key")
         }
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["messages": history])
+        // "rich": this app renders tables and ```chart blocks, so the engine may ask for them.
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["messages": history, "rich": true])
         return req
     }
 

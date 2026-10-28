@@ -181,7 +181,7 @@ Apple Intelligence needs no key. File analysis, views and the HSD never need a k
 
 ```bash
 open build/Build/Products/Debug/CADVERT.app --args --open part.step --ask "What is the thinnest wall?"
-xcrun simctl launch <udid> com.cadvert.CADVERT --open /path/part.step --show hsd
+xcrun simctl launch <udid> com.conviviumllc.cadvert --open /path/part.step --show hsd
 ```
 
 `--open <file>` imports a file after the engine is ready; `--ask "<q>"` sends a message

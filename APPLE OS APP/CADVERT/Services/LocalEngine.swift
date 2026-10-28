@@ -42,6 +42,7 @@ final class LocalEngine {
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         env["PYTHONNOUSERSITE"] = "1"
         env["VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN"] = "1"
+        env["MPLBACKEND"] = "Agg"                 // no GUI backend: Tk isn't shipped, and nothing here draws windows
         // Cached parts belong in Caches: everything there is regenerable from the user's
         // own CAD file, and the system may reclaim it under disk pressure. Under the App
         // Sandbox this resolves inside the app container automatically.
@@ -136,7 +137,7 @@ final class LocalEngine {
     static var cacheDirectory: URL? {
         let fm = FileManager.default
         guard let base = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
-        let id = Bundle.main.bundleIdentifier ?? "com.cadvert.CADVERT"
+        let id = Bundle.main.bundleIdentifier ?? "com.conviviumllc.cadvert"
         let dir = base.appendingPathComponent(id, isDirectory: true)
             .appendingPathComponent("parts", isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -202,6 +203,7 @@ enum EngineLocator {
     }
 
     static func candidates(customPath: String) -> [URL] {
+        #if DEBUG
         var list: [URL] = []
         let custom = customPath.trimmingCharacters(in: .whitespacesAndNewlines)
         if !custom.isEmpty {
@@ -220,6 +222,10 @@ enum EngineLocator {
         list.append(home.appendingPathComponent(".cadvert/engine/bin/python3"))
         list.append(home.appendingPathComponent(".cadvert/venv/bin/python3"))
         return list
+        #else
+        // Release: only the engine inside the app. The App Sandbox refuses to run anything else.
+        return bundledPython().map { [$0] } ?? []
+        #endif
     }
 
     /// Runs `python -c "import cadvert.server, uvicorn"` with a timeout.

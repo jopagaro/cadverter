@@ -14,19 +14,21 @@ CADVERT
 ## Subtitle (30 characters max)
 
 ```
-Exact CAD geometry, AI anylsis with offline capability 
+Exact CAD geometry, offline AI
 ```
 
-Alternatives if you want a different emphasis:
+That is exactly 30 characters, Apple's limit. Alternatives if you want a different emphasis:
 - `Read CAD files with AI` (28)
 - `CAD analysis that's exact` (25)
 
 ## Promotional text (170 max — editable without a new review)
 
 ```
-Analyse STEP, IGES and STL files entirely on your Mac. Exact dimensions straight from the
-CAD geometry — never measured from a render, never uploaded anywhere.
+Analyse STEP, IGES and BREP files entirely on your Mac. Exact dimensions straight from the CAD geometry — never measured from a render, never uploaded anywhere.
 ```
+
+162 characters. It names only the formats that get exact dimensions; STL and OBJ are meshes
+and report overall size only, which the description already says.
 
 ## Description (4000 max)
 
@@ -34,7 +36,7 @@ CAD geometry — never measured from a render, never uploaded anywhere.
 CADVERT reads CAD files the way an engineer does — from the geometry the designer
 authored, not from a picture of it.
 
-Open a STEP, IGES, BREP, STL or OBJ file and CADVERT extracts the exact analytical
+Open a STEP, IGES or BREP file and CADVERT extracts the exact analytical
 geometry: hole diameters, wall thicknesses, fillet radii, bounding boxes, volumes and
 centres of mass. Every value comes straight from the file's own definitions, so a wall
 that is 11.000 mm thick is reported as 11.000 mm — not as an estimate from a mesh.
@@ -97,19 +99,24 @@ That is 89 characters. Do not repeat the app name — Apple already indexes it.
 Developer Tools is the least competitive of the three and matches how the app behaves.
 Graphics & Design gets more browsing traffic but puts you next to illustration apps.
 
-## Support URL (required)
+## URLs
 
-You must have one before submitting. The simplest that satisfies Apple is a single page
-with a contact address — see `SUPPORT-PAGE.md`.
+All three point at CADVERT's own pages under conviviumllc.com — never the Convivium
+homepage, which lists every app. Paste them exactly; WordPress serves them without a
+trailing slash.
 
-## Marketing URL (optional)
+| App Store Connect field | URL | Shown on the App Store as |
+|---|---|---|
+| Support URL (required) | `https://conviviumllc.com/cadvert/support` | "App Support" |
+| Privacy Policy URL (required) | `https://conviviumllc.com/cadvert/privacy` | "Privacy Policy" |
+| Marketing URL (optional) | `https://conviviumllc.com/cadvert` | "Developer Website" |
 
-Your product page if you build one for the Windows release later.
+The Privacy Policy URL is entered under App Privacy, not on the version page.
 
 ## Copyright
 
 ```
-© 2026 [your LLC name]
+© 2026 Convivium LLC
 ```
 
 ## Version and What's New
@@ -128,8 +135,9 @@ First release.
 
 ## Price
 
-You mentioned $49. Worth knowing: Apple takes 30%, or 15% if you join the Small Business
-Program, which you almost certainly qualify for under $1M a year. Apply for it before your
-first sale — it is not retroactive.
+**USD 9.99**, one-time. Set it in App Store Connect → CADVERT → Pricing and Availability;
+Apple converts it for other storefronts. The website (`website/site.config`) says the same,
+so change both together if it ever moves.
 
-At $49 with the Small Business rate you keep about $41.65 per sale.
+Apple takes 15% under the Small Business Program (applied for), so you keep about **$8.49**
+per US sale, before any sales tax Apple collects on top in some regions.

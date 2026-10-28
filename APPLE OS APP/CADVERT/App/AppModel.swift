@@ -19,7 +19,7 @@ struct Toast: Equatable {
 }
 
 enum AppSheet: String, Identifiable {
-    case hsd, about, developers, settings, keyNeeded, appleUnavailable, engineLog
+    case hsd, about, developers, settings, keyNeeded, appleUnavailable, engineLog, acknowledgements
     var id: String { rawValue }
 }
 
@@ -49,6 +49,8 @@ final class AppModel {
     var draft = ""
     var pendingMessage: String?
     private var lastImport: (data: Data, filename: String)?
+    /// A file opened (Finder, Dock, drag) while the engine was still starting; imported once it's ready.
+    private var queuedImport: (data: Data, filename: String)?
 
     // Models offered by each provider — live from the provider once a key exists.
     var modelListings: [AIProvider: ModelListing] = [:]
@@ -125,7 +127,7 @@ final class AppModel {
     /// Developer/QA automation, compiled into Debug builds only — a shipped (Release) app never
     /// reads these, so it always starts empty. `CADVERT --open /path/to/part.step`
     /// (Terminal: `open -a CADVERT --args --open part.step`; Simulator:
-    /// `xcrun simctl launch <udid> com.cadvert.CADVERT --open <path>` or env CADVERT_OPEN_FILE).
+    /// `xcrun simctl launch <udid> com.conviviumllc.cadvert --open <path>` or env CADVERT_OPEN_FILE).
     func importLaunchFileIfAny() async {
         let args = CommandLine.arguments
         var path: String?
@@ -142,6 +144,18 @@ final class AppModel {
         if let i = args.firstIndex(of: "--show"), i + 1 < args.count, let s = AppSheet(rawValue: args[i + 1]) {
             sheet = s
         }
+        // `--demo-reply reply.md`: a canned answer, with sample working, so the reply renderer
+        // (tables, charts, "Show working") can be checked without a provider key.
+        if let i = args.firstIndex(of: "--demo-reply"), i + 1 < args.count,
+           let reply = try? String(contentsOfFile: (args[i + 1] as NSString).expandingTildeInPath, encoding: .utf8) {
+            transcript.append(.message(.user("How many through holes and blind holes are there, and what are the most common diameters?")))
+            transcript.append(.message(ChatMessage(role: .assistant, text: reply, work: [
+                .note("I'll pull the cylindrical face population to get exact diameter statistics."),
+                .lookup("Searching faces"),
+                .note("The face search caps its listing at 50, so let me sample hole features across the ID range."),
+                .lookup("Inspecting feature"), .lookup("Inspecting feature"), .lookup("Inspecting feature"),
+            ])))
+        }
     }
     #endif
 
@@ -151,6 +165,17 @@ final class AppModel {
         let task = Task { await self.performConnect() }
         connectTask = task
         await task.value
+        // A superseded attempt (cancelled by a newer connect) leaves the queue for the newer one.
+        guard !task.isCancelled else { return }
+        if let queued = queuedImport {
+            if connection.isReady {
+                queuedImport = nil
+                await importData(queued.data, filename: queued.filename)
+            } else if let failure = connection.failureMessage {
+                queuedImport = nil
+                showToast("Could not open \(queued.filename) — \(failure.split(separator: "\n").first ?? "")")
+            }
+        }
     }
 
     private func performConnect() async {
@@ -185,7 +210,11 @@ final class AppModel {
                     connection = .failed("This download is for a different kind of Mac. It has no \(EngineLocator.currentArch == "x86_64" ? "Intel" : "Apple silicon") engine — please download the \(EngineLocator.currentArch == "x86_64" ? "Intel" : "Apple silicon") build of CADVERT.")
                     return
                 }
+                #if DEBUG
                 connection = .failed("No CADVERT engine found on this Mac.\n\nBundle one with scripts/bundle-engine.sh, install it to ~/.cadvert/engine, or point Settings at a Python that has `pip install cadvert[server]`.")
+                #else
+                connection = .failed("This copy of CADVERT is missing its analysis engine. Please reinstall CADVERT from the App Store.")
+                #endif
                 return
             }
             connection = .connecting("Starting local engine…")
@@ -286,6 +315,15 @@ final class AppModel {
             let ext = (filename as NSString).pathExtension.lowercased()
             showToast(CadvertError.unsupportedFormat(ext.isEmpty ? "?" : ext).localizedDescription)
             return
+        }
+        switch connection {
+        case .idle, .connecting:
+            // Opening a file is what launches the app from Finder, so it lands before the engine is up.
+            queuedImport = (data, filename)
+            showToast("Starting the engine — \(filename) will open in a moment", success: true)
+            return
+        case .ready, .failed:
+            break
         }
         guard let client, connection.isReady else {
             showToast(connection.failureMessage.map { "Engine unavailable — \($0.split(separator: "\n").first ?? "")" } ?? CadvertError.notConnected.localizedDescription)
@@ -435,17 +473,20 @@ final class AppModel {
     }
 
     private func consume(_ stream: AsyncThrowingStream<ChatEvent, Error>, text: String, userId: UUID, typingId: UUID) async {
-        var full = ""
+        var reply = ReplyAssembler()
         defer { streaming = false }
         do {
             for try await event in stream {
                 switch event {
                 case .toolCall(let name):
-                    update(typingId) { $0.isTyping = false; $0.toolLabel = ToolLabels.label(for: name) }
+                    let label = ToolLabels.label(for: name)
+                    reply.toolCall(label)
+                    let (answer, work) = (reply.answer, reply.work)
+                    update(typingId) { $0.isTyping = false; $0.toolLabel = label; $0.text = answer; $0.work = work }
                 case .content(let chunk):
-                    full += chunk
-                    let snapshot = full
-                    update(typingId) { $0.isTyping = false; $0.toolLabel = nil; $0.text = snapshot }
+                    reply.content(chunk)
+                    let answer = reply.answer
+                    update(typingId) { $0.isTyping = false; $0.toolLabel = nil; $0.text = answer }
                 case .error(let m):
                     throw CadvertError.stream(m)
                 case .done:
@@ -453,8 +494,15 @@ final class AppModel {
                 }
             }
             messagesSent += 1
-            update(typingId) { $0.isTyping = false; $0.toolLabel = nil; $0.text = full }
-            if full.isEmpty { remove(typingId) }
+            reply.finish()
+            let (answer, work) = (reply.answer, reply.work)
+            // Never let a turn vanish: an empty reply says so and can be asked again.
+            guard !answer.isEmpty else {
+                failMessage(userId: userId, typingId: typingId,
+                            message: "No answer came back. Try asking again, or ask something more specific.")
+                return
+            }
+            update(typingId) { $0.isTyping = false; $0.toolLabel = nil; $0.text = answer; $0.work = work }
         } catch let e as CadvertError {
             switch e {
             case .apiKeyRequired:

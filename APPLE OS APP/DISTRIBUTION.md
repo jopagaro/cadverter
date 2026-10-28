@@ -7,7 +7,7 @@ advertises ("Get the Desktop App — $20: unlimited files, full analysis, offlin
 
 1. Join the Apple Developer Program (US$99/yr) with the Apple ID that owns Team
    `AZVC5A74YD` (the team already in `project.yml`; change it if you sell under a company).
-2. In App Store Connect create the app record: bundle ID `com.cadvert.CADVERT`,
+2. In App Store Connect create the app record: bundle ID `com.conviviumllc.cadvert`,
    name "CADVERT", SKU `cadvert-1`. Turn on **Universal Purchase** if you want Mac + iPad
    in one purchase.
 3. Legal pages you'll be asked for: privacy policy (mention: files are processed on-device

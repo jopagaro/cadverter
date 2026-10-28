@@ -38,6 +38,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sigterm: DispatchSourceSignal?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if DEBUG
+        if Self.renderReplyIfAsked() { NSApp.terminate(nil); return }
+        #endif
         // `kill <pid>` / logout: quit gracefully so the engine child is stopped too.
         signal(SIGTERM, SIG_IGN)
         let src = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
@@ -57,6 +60,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    #if DEBUG
+    /// `CADVERT --render-reply reply.md out.png [dark|light]` draws a reply's content to a PNG
+    /// and quits: a check on the renderer that needs no window, engine or provider key.
+    static func renderReplyIfAsked() -> Bool {
+        let args = CommandLine.arguments
+        guard let i = args.firstIndex(of: "--render-reply"), i + 2 < args.count else { return false }
+        guard let text = try? String(contentsOfFile: args[i + 1], encoding: .utf8) else { return true }
+        let dark = i + 3 >= args.count || args[i + 3] != "light"
+        let palette: Palette = dark ? .dark : .light
+        let view = MarkdownText(text: text, isUser: false)
+            .environment(\.palette, palette)
+            .environment(\.colorScheme, dark ? .dark : .light)
+            .padding(16)
+            .frame(width: 760, alignment: .leading)
+            .background(palette.surface)
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 2
+        if let tiff = renderer.nsImage?.tiffRepresentation,
+           let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+            try? png.write(to: URL(fileURLWithPath: args[i + 2]))
+        }
+        return true
+    }
+    #endif
 }
 
 struct AppCommands: Commands {
@@ -96,6 +124,8 @@ struct AppCommands: Commands {
         CommandGroup(replacing: .help) {
             Button("For Developers (pip install cadvert)") { model.sheet = .developers }
             Link("cadvert on PyPI", destination: URL(string: "https://pypi.org/project/cadvert/")!)
+            Divider()
+            Button("Acknowledgements") { model.sheet = .acknowledgements }
         }
     }
 }

@@ -2,15 +2,22 @@ import Foundation
 import Observation
 
 enum EngineMode: String, CaseIterable, Identifiable {
-    /// macOS only: run the Python engine as a child process (bundled, ~/.cadvert/engine, or a custom path).
+    /// macOS only: run the Python engine bundled in the app as a child process
+    /// (Debug builds also accept ~/.cadvert/engine or a custom Python).
     case local
-    /// Any platform: connect to a hosted `cadvert-server`.
+    /// Connect to a `cadvert-server` elsewhere — iPhone/iPad, and Mac Debug builds.
     case remote
     var id: String { rawValue }
 
+    /// A shipped Mac app runs only its own engine: remote mode would send CAD files off the Mac,
+    /// which the product promises never happens. It stays in Debug builds for development.
     static var available: [EngineMode] {
         #if os(macOS)
+        #if DEBUG
         return [.local, .remote]
+        #else
+        return [.local]
+        #endif
         #else
         return [.remote]
         #endif
@@ -61,9 +68,8 @@ final class AppSettings {
         // A stored choice of Apple is honoured while the hardware allows it (the model may just
         // be off or downloading), but dropped on hardware that can never run it.
         if provider == .apple, !AppleIntelligence.isDeviceCapable { provider = .openai }
-        #if !os(macOS)
-        engineMode = .remote
-        #endif
+        // A mode this build doesn't offer (say, remote saved by a Debug build) falls back.
+        if !EngineMode.available.contains(engineMode) { engineMode = EngineMode.available[0] }
     }
 
     var remoteURL: URL? {

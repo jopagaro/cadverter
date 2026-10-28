@@ -9,14 +9,52 @@ struct ChatMessage: Identifiable, Equatable {
     var isTyping: Bool = false
     var toolLabel: String? = nil
     var isError: Bool = false
+    /// How the answer was reached: the geometry lookups and any notes the model wrote
+    /// between them. Shown collapsed under "Show working"; `text` holds only the answer.
+    var work: [WorkStep] = []
 
-    init(id: UUID = UUID(), role: Role, text: String, isTyping: Bool = false, toolLabel: String? = nil, isError: Bool = false) {
+    init(id: UUID = UUID(), role: Role, text: String, isTyping: Bool = false, toolLabel: String? = nil,
+         isError: Bool = false, work: [WorkStep] = []) {
         self.id = id; self.role = role; self.text = text
-        self.isTyping = isTyping; self.toolLabel = toolLabel; self.isError = isError
+        self.isTyping = isTyping; self.toolLabel = toolLabel; self.isError = isError; self.work = work
     }
 
     static func user(_ text: String) -> ChatMessage { ChatMessage(role: .user, text: text) }
     static func typing() -> ChatMessage { ChatMessage(role: .assistant, text: "", isTyping: true) }
+}
+
+enum WorkStep: Equatable {
+    case lookup(String)    // a tool call, by its human label ("Measuring distance")
+    case note(String)      // text the model wrote before that call ("Let me check the bores…")
+}
+
+/// Turns a reply's stream of text and tool calls into an answer plus the working behind it.
+/// Models write "Let me pull the hole list…", call a tool, write "Now the bores…", call
+/// another, then answer. Joined, those notes ran straight into the answer ("…statistics.The
+/// face search…"). Here, text that precedes a tool call becomes a note, and the answer is what
+/// comes after the last call.
+struct ReplyAssembler {
+    private(set) var work: [WorkStep] = []
+    private(set) var answer = ""
+
+    mutating func content(_ chunk: String) { answer += chunk }
+
+    mutating func toolCall(_ label: String) {
+        let note = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !note.isEmpty { work.append(.note(note)) }
+        answer = ""
+        work.append(.lookup(label))
+    }
+
+    /// The reply once the stream ends. A model that wrote its whole answer and then made one
+    /// last lookup leaves nothing after it, so that last note is promoted back to the answer.
+    mutating func finish() {
+        guard answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let i = work.lastIndex(where: { if case .note = $0 { return true } else { return false } }),
+              case .note(let text) = work[i] else { return }
+        work.remove(at: i)
+        answer = text
+    }
 }
 
 /// One row of the transcript: the web UI mixes system pills, suggestion chips and bubbles.

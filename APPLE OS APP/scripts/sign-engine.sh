@@ -8,7 +8,20 @@ set -eu
 RES="${CODESIGNING_FOLDER_PATH:-}/Contents/Resources"
 IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:-}"
 [ -n "$IDENTITY" ] || IDENTITY="-"
-ENTITLEMENTS="${SRCROOT}/scripts/engine.entitlements"
+
+# The interpreter's entitlements must match the app's sandbox. In a sandboxed app it needs
+# app-sandbox + inherit (App Store validation rejects any executable without app-sandbox),
+# but an inherit helper traps at launch when its parent isn't sandboxed — as in Debug.
+APP_ENTITLEMENTS="${SRCROOT}/${CODE_SIGN_ENTITLEMENTS:-}"
+SANDBOXED=0
+if [ -f "$APP_ENTITLEMENTS" ] && \
+   [ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$APP_ENTITLEMENTS" 2>/dev/null)" = "true" ]; then
+  SANDBOXED=1
+  ENTITLEMENTS="${SRCROOT}/scripts/engine.entitlements"
+else
+  ENTITLEMENTS="${SRCROOT}/scripts/engine-debug.entitlements"
+fi
+echo "sign-engine: app sandboxed=$SANDBOXED — interpreter entitlements $(basename "$ENTITLEMENTS")"
 export IDENTITY ENTITLEMENTS
 
 found=0
@@ -26,16 +39,25 @@ for ENGINE_DIR in "$RES"/engine "$RES"/engine-*; do
       done' sh
 
   # 2. Executables (the interpreter itself) get the hardened runtime + engine entitlements.
-  find "$ENGINE_DIR/bin" -type f -perm -u+x -print0 \
-    | xargs -0 -n 1 sh -c '
-      f="$1"
-      magic=$(head -c 4 "$f" | od -An -tx1 | tr -d " \n")
-      case "$magic" in
-        cffaedfe|feedface|feedfacf|cafebabe|bebafeca)
-          codesign --force --sign "$IDENTITY" --options runtime --timestamp=none \
-            --entitlements "$ENTITLEMENTS" "$f" >/dev/null 2>&1 \
-            || codesign --force --sign "$IDENTITY" "$f" ;;
-      esac' sh
+  #    A failure stops the build: an interpreter signed without them would run here (it
+  #    inherits the app's sandbox) but be rejected by App Store validation.
+  for f in "$ENGINE_DIR"/bin/*; do
+    [ -f "$f" ] && [ ! -L "$f" ] && [ -x "$f" ] || continue
+    magic=$(head -c 4 "$f" | od -An -tx1 | tr -d " \n")
+    case "$magic" in
+      cffaedfe|feedface|feedfacf|cafebabe|bebafeca) ;;
+      *) continue ;;
+    esac
+    if ! codesign --force --sign "$IDENTITY" --options runtime --timestamp=none \
+         --entitlements "$ENTITLEMENTS" "$f"; then
+      echo "error: sign-engine: could not sign $f with $(basename "$ENTITLEMENTS")" >&2
+      exit 1
+    fi
+    if [ "$SANDBOXED" = 1 ] && ! codesign -d --entitlements - --xml "$f" 2>/dev/null | grep -q "com.apple.security.app-sandbox"; then
+      echo "error: sign-engine: $f is missing the app-sandbox entitlement" >&2
+      exit 1
+    fi
+  done
 
   echo "sign-engine: $(basename "$ENGINE_DIR") done ($(find "$ENGINE_DIR" -type f \( -name "*.so" -o -name "*.dylib" \) | wc -l | tr -d " ") libraries)"
 done

@@ -63,6 +63,7 @@ struct SettingsView: View {
                             }
                         } else {
                             #if os(macOS)
+                            #if DEBUG
                             Text(EngineLocator.bundledPython() != nil
                                  ? "A CADVERT engine is bundled inside this app — nothing to install."
                                  : "No engine is bundled in this build. The app also looks in ~/.cadvert/engine and at the path below (Debug builds only, since the App Sandbox blocks executables outside the app).")
@@ -73,6 +74,10 @@ struct SettingsView: View {
                                     .onSubmit { Task { await model.connect() } }
                                 Button("Use") { Task { await model.connect() } }.buttonStyle(GhostButtonStyle())
                             }
+                            #else
+                            Text("The analysis engine is built into CADVERT and runs entirely on this Mac.")
+                                .typo(10.5, .medium).foregroundStyle(pal.textDim).fixedSize(horizontal: false, vertical: true)
+                            #endif
                             Button("Engine log…") { model.refreshEngineLog(); model.sheet = .engineLog }
                                 .buttonStyle(GhostButtonStyle())
                             #endif
@@ -186,6 +191,7 @@ struct SettingsView: View {
                         HStack(spacing: 12) {
                             Button("How it works") { model.sheet = .about }.buttonStyle(NavLinkStyle())
                             Button("For Developers") { model.sheet = .developers }.buttonStyle(NavLinkStyle())
+                            Button("Acknowledgements") { model.sheet = .acknowledgements }.buttonStyle(NavLinkStyle())
                             Link("PyPI", destination: URL(string: "https://pypi.org/project/cadvert/")!)
                                 .typo(11, .semibold).foregroundStyle(pal.textMuted)
                         }

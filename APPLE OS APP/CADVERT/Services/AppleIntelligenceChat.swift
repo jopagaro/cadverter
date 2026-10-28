@@ -199,7 +199,7 @@ final class OnDeviceEngine {
             : "Use the tools whenever you need a number that is not in the summary: get_feature for a hole/boss/fillet/pattern by ID, get_face / get_edge for F12 / E5, measure_distance between two entities, get_neighbors for adjacent faces, search_faces to find faces by type or size."
         return """
         You are a mechanical engineer answering questions about one CAD part. All dimensions come from the exact CAD geometry; never estimate. \(toolRule)
-        Reference faces as F12, edges as E5, features by ID such as hole_1. Keep answers short and precise, with units.
+        Reference faces as F12, edges as E5, features by ID such as hole_1. Start with the direct answer in one sentence, then at most a few short bullets, with units. Don't describe your steps.
         <PART_SUMMARY>
         \(summary)\(note)
         </PART_SUMMARY>
