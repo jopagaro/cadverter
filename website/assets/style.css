@@ -113,8 +113,9 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 44px 0; }
 a.card { display: block; text-decoration: none; color: inherit; transition: border-color .15s; }
 a.card:hover { border-color: var(--text-dim); }
 a.card h3 { color: var(--text); }
+.card p.meta { color: var(--text-dim); font-size: 14px; }
 
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
 
 .btn {
   display: inline-block; background: var(--accent); color: #fff;
@@ -124,6 +125,8 @@ a.card h3 { color: var(--text); }
 .btn:hover { opacity: .88; }
 .btn-secondary { background: transparent; color: var(--text-muted); border-color: var(--border); }
 .btn-secondary:hover { color: var(--text); background: var(--surface-alt); opacity: 1; }
+.btn-soon { background: var(--surface-alt); color: var(--text-muted); border-color: var(--border); cursor: default; }
+.btn-soon:hover { opacity: 1; }
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 28px 0; }
 
 .pill {

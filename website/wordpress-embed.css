@@ -1,0 +1,40 @@
+/* Styles for the CADVERT pages when pasted into WordPress (fill.sh inlines this into each
+   dist/wordpress/*.html). Everything is scoped to .cadvert-page so the rest of the site is
+   untouched, and specific enough to beat the theme's bare h2/h3 rules (which uppercase
+   every heading). Colours are CADVERT's light palette, which sits on the theme's #fafafa. */
+.cadvert-page { max-width: 720px; margin: 0 auto; font-size: 16px; line-height: 1.65; color: #1A1A1A; }
+.cadvert-page h2 { font-size: 24px; line-height: 1.3; font-weight: 700; letter-spacing: -0.3px; text-transform: none; margin: 44px 0 12px; color: #1A1A1A; }
+.cadvert-page h3 { font-size: 17px; line-height: 1.4; font-weight: 700; letter-spacing: normal; text-transform: none; margin: 26px 0 8px; color: #1A1A1A; }
+.cadvert-page p { margin: 0 0 16px; color: #4A4A4A; }
+.cadvert-page p.lede { font-size: 19px; line-height: 1.6; }
+.cadvert-page strong { color: #1A1A1A; font-weight: 600; }
+.cadvert-page a { color: #1A1A1A; text-decoration: underline; text-underline-offset: 2px; }
+.cadvert-page ul { margin: 0 0 16px 22px; padding: 0; color: #4A4A4A; }
+.cadvert-page li { margin-bottom: 7px; }
+.cadvert-page hr { border: 0; border-top: 1px solid #E4E4E2; margin: 40px 0; }
+.cadvert-page .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 26px 0; }
+.cadvert-page a.btn, .cadvert-page .btn { display: inline-block; background: #1A1A1A; color: #FFFFFF; text-decoration: none; font-weight: 600; font-size: 15px; line-height: 1.2; padding: 12px 22px; border: 1px solid #1A1A1A; border-radius: 10px; }
+.cadvert-page a.btn-secondary { background: transparent; color: #1A1A1A; border-color: #D6D6D4; }
+.cadvert-page .btn-soon { background: #EFEFED; color: #6B6B6B; border-color: #EFEFED; }
+.cadvert-page .note { font-size: 15px; color: #6B6B6B; border-left: 2px solid #D6D6D4; padding-left: 14px; }
+.cadvert-page .updated { font-size: 14px; color: #8A8A8A; margin: 0 0 28px; }
+.cadvert-page pre.sample { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.7; background: #F3F3F1; color: #1A1A1A; border: 1px solid #E4E4E2; border-radius: 10px; padding: 16px 18px; margin: 0 0 20px; overflow-x: auto; white-space: pre; }
+.cadvert-page .card { background: #FFFFFF; border: 1px solid #E4E4E2; border-radius: 12px; padding: 20px 22px; margin-bottom: 14px; }
+.cadvert-page .card h3 { margin-top: 0; }
+.cadvert-page.wide { max-width: 940px; }
+.cadvert-page .card p.meta { color: #8A8A8A; font-size: 14px; }
+.cadvert-page .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.cadvert-page a.card { display: block; color: inherit; text-decoration: none; transition: border-color .15s, box-shadow .15s; }
+.cadvert-page a.card:hover { border-color: #C9C9C7; box-shadow: 0 4px 16px rgba(0,0,0,.06); }
+.cadvert-page .card > :last-child { margin-bottom: 0; }
+.cadvert-page .pill { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: #6B6B6B; background: #F3F3F1; border: 1px solid #E4E4E2; padding: 2px 8px; border-radius: 999px; margin-left: 8px; vertical-align: 2px; }
+.cadvert-page table { width: 100%; border-collapse: collapse; border: 0; margin: 0 0 20px; font-size: 15px; }
+.cadvert-page th, .cadvert-page td { text-align: left; vertical-align: top; padding: 10px 14px 10px 0; border: 0; border-bottom: 1px solid #E4E4E2; background: none; }
+.cadvert-page th { width: 36%; font-weight: 600; color: #1A1A1A; }
+.cadvert-page td { color: #4A4A4A; }
+@media (max-width: 640px) {
+  .cadvert-page p.lede { font-size: 17px; }
+  .cadvert-page th, .cadvert-page td { display: block; width: auto; }
+  .cadvert-page th { padding-bottom: 2px; }
+  .cadvert-page td { padding-top: 0; padding-bottom: 14px; }
+}
