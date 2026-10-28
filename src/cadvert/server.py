@@ -35,7 +35,7 @@ from typing import Optional
 
 from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # Type files by Python's built-in table only. By default mimetypes also reads system tables
@@ -1011,6 +1011,46 @@ async def clear_cache():
         "freed_megabytes": before["megabytes"],
         "now": _cache_usage(),
     })
+
+
+@app.get("/mesh/{session_id}")
+async def view_mesh(session_id: str):
+    """The part as triangles tagged by face, for an interactive 3D view.
+
+    Binary; the layout is documented in viewmesh.py. Built on first request and kept with
+    the session, so reopening the view is instant.
+    """
+    session = _sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+    path = UPLOAD_DIR / session_id / "view.mesh"
+    if not path.exists():
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(_executor, _write_view_mesh, session, path)
+    return Response(content=path.read_bytes(), media_type="application/octet-stream")
+
+
+def _write_view_mesh(session: dict, path: Path) -> None:
+    from .viewmesh import build_view_mesh
+    data = build_view_mesh(session["shape"], session.get("graph"), session.get("units") or "mm")
+    tmp = path.with_suffix(".tmp")
+    tmp.write_bytes(data)
+    tmp.replace(path)
+
+
+@app.get("/face/{session_id}/{face_id}")
+async def face_info(session_id: str, face_id: int):
+    """What one face is and what it belongs to — shown when a face is clicked in the 3D view."""
+    session = _sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+    from .viewmesh import face_summary
+    info = face_summary(face_id, session.get("graph"), session.get("features"),
+                        session.get("feature_ids"), session.get("assembly"),
+                        session.get("units") or "mm")
+    if info is None:
+        raise HTTPException(status_code=404, detail=f"Face F{face_id} not found")
+    return JSONResponse(info)
 
 
 @app.get("/tools")

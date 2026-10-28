@@ -33,6 +33,7 @@ struct InputBar: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(p.surface)
+        .onChange(of: model.inputFocusRequest) { _, _ in focused = true }
         .onChange(of: model.session?.id) { _, new in
             // Auto-focus after upload like the web app — but only where a keyboard won't cover the UI.
             #if os(macOS)

@@ -57,6 +57,25 @@ struct ViewImage: Decodable, Identifiable, Equatable {
     }
 }
 
+/// `GET /face/{session}/{id}` — what a clicked face is and what it belongs to.
+struct FaceInfo: Decodable, Equatable {
+    var id: String              // "F212"
+    var kind: String            // "Cylindrical face"
+    var detail: String?         // "∅6.600 mm"
+    var feature: String?        // "hole_7"
+    var featureDetail: String?  // "Through hole ∅6.6 mm, 14 mm deep"
+    var featureFaces: [Int]?
+    var component: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, detail, feature, component
+        case featureDetail = "feature_detail"
+        case featureFaces = "feature_faces"
+    }
+
+    var faceNumber: Int? { Int(id.dropFirst()) }
+}
+
 /// `summary` block of `/convert` (see `_build_summary`).
 struct PartSummary: Decodable, Equatable {
     var format: String?

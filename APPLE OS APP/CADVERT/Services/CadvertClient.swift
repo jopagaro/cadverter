@@ -120,6 +120,24 @@ struct CadvertClient {
         return String(decoding: data, as: UTF8.self)
     }
 
+    /// `GET /mesh/{session}` — the part tessellated for the 3D view (built on first request).
+    func mesh(sessionId: String) async throws -> PartMesh {
+        var req = request("/mesh/\(sessionId)")
+        req.timeoutInterval = 300
+        let (data, resp) = try await Self.session.data(for: req)
+        try Self.check(resp, data)
+        do { return try PartMesh(data: data, sessionId: sessionId) } catch { throw CadvertError.invalidResponse }
+    }
+
+    /// `GET /face/{session}/{id}` — a clicked face, described.
+    func faceInfo(sessionId: String, faceId: Int) async throws -> FaceInfo {
+        var req = request("/face/\(sessionId)/\(faceId)")
+        req.timeoutInterval = 30
+        let (data, resp) = try await Self.session.data(for: req)
+        try Self.check(resp, data)
+        return try JSONDecoder().decode(FaceInfo.self, from: data)
+    }
+
     /// `GET /models` — what this key can actually use, asked of the provider.
     func availableModels(provider: AIProvider, apiKey: String?) async throws -> ModelListing {
         var req = request("/models?provider=\(provider.rawValue)")
@@ -158,8 +176,6 @@ struct CadvertClient {
         req.timeoutInterval = 10
         _ = try? await Self.session.data(for: req)
     }
-
-    func imageURL(for image: ViewImage) -> URL? { image.resolvedURL(base: baseURL) }
 
     // MARK: Helpers
 

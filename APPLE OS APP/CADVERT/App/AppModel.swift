@@ -52,6 +52,16 @@ final class AppModel {
     /// A file opened (Finder, Dock, drag) while the engine was still starting; imported once it's ready.
     private var queuedImport: (data: Data, filename: String)?
 
+    // 3D view
+    var mesh: PartMesh?
+    var meshState: MeshState = .none
+    var selectedFace: FaceInfo?
+    var highlightedFaces: [Int] = []
+    var viewCommand = ViewCommand(preset: .iso, animated: false)
+    /// Bumped to move keyboard focus to the question field.
+    var inputFocusRequest = 0
+    private var pendingPick: Int?
+
     // Models offered by each provider — live from the provider once a key exists.
     var modelListings: [AIProvider: ModelListing] = [:]
 
@@ -62,7 +72,6 @@ final class AppModel {
     // UI
     var toast: Toast?
     var sheet: AppSheet?
-    var lightboxURL: URL?
     var showFileImporter = false
     var showHSDExporter = false
     var showPartSheet = false
@@ -364,6 +373,7 @@ final class AppModel {
             ]
             messagesSent = 0
             processing = nil
+            loadMesh()
             doneLabel = "Done in \(elapsed)s"
             let label = doneLabel
             Task { [weak self] in
@@ -422,7 +432,55 @@ final class AppModel {
         streaming = false
         draft = ""
         doneLabel = nil
-        lightboxURL = nil
+        mesh = nil
+        meshState = .none
+        clearSelection()
+    }
+
+    // MARK: - 3D view
+
+    func loadMesh() {
+        guard let client, let id = session?.id else { return }
+        meshState = .loading
+        Task {
+            do {
+                let m = try await client.mesh(sessionId: id)
+                guard session?.id == id else { return }
+                mesh = m
+                meshState = .ready
+                viewCommand = ViewCommand(preset: .iso, animated: false)
+            } catch {
+                guard session?.id == id else { return }
+                meshState = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    /// A click in the 3D view: select the face (and the rest of its feature), or clear.
+    func pickFace(_ face: Int?) {
+        guard let face, let client, let s = session, !s.isMesh else { clearSelection(); return }
+        pendingPick = face
+        highlightedFaces = [face]
+        Task {
+            let info = try? await client.faceInfo(sessionId: s.id, faceId: face)
+            guard pendingPick == face, session?.id == s.id else { return }
+            selectedFace = info
+            highlightedFaces = info?.featureFaces ?? [face]
+        }
+    }
+
+    func clearSelection() {
+        pendingPick = nil
+        selectedFace = nil
+        highlightedFaces = []
+    }
+
+    /// Start a question about the selected face; the user can send it as is or edit it.
+    func askAboutSelection() {
+        guard let f = selectedFace else { return }
+        let subject = f.feature.map { "\($0) (\(f.id))" } ?? "face \(f.id)"
+        draft = "Tell me about \(subject)" + (f.component.map { " in \($0)" } ?? "") + "."
+        inputFocusRequest += 1
     }
 
     // MARK: - Chat
@@ -590,8 +648,6 @@ final class AppModel {
         #endif
         if let toast { showToast(toast, success: true) }
     }
-
-    func imageURL(for image: ViewImage) -> URL? { client?.imageURL(for: image) }
 
     func showToast(_ text: String, success: Bool = false) {
         toast = Toast(text: text, success: success)
