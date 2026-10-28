@@ -107,6 +107,38 @@ private extension Data {
     }
 }
 
+// MARK: - Scale guide
+
+extension PartMesh {
+    var size: SIMD3<Float> { boundsMax - boundsMin }
+
+    /// Grid spacing for the scale guide: the round number (1, 2 or 5 × 10ⁿ) nearest to a
+    /// tenth of the part's footprint, so there are about ten squares across it.
+    var gridStep: Float {
+        let raw = max(size.x, size.y, 1e-3) / 10
+        let magnitude = pow(10, floor(log10(raw)))
+        return [1, 2, 5, 10].map { $0 * magnitude }.min { abs(log($0 / raw)) < abs(log($1 / raw)) }!
+    }
+
+    /// A coordinate on an axis: like `format`, with a proper minus sign below zero.
+    static func format(_ v: Float, signed: Bool) -> String {
+        guard signed, v < 0 else { return format(abs(v) < 1e-6 ? 0 : v) }
+        let s = format(-v)
+        return s == "0" ? s : "−" + s
+    }
+
+    /// A length as people write it: "140", "17.5", "6.35" — no trailing zeros.
+    static func format(_ v: Float) -> String {
+        let decimals = v >= 100 ? 0 : v >= 10 ? 1 : 2
+        var s = String(format: "%.\(decimals)f", v)
+        if s.contains(".") {
+            while s.hasSuffix("0") { s.removeLast() }
+            if s.hasSuffix(".") { s.removeLast() }
+        }
+        return s
+    }
+}
+
 /// The standard views, named and aimed as the engine's rendered views are (Z up): the
 /// direction is where the camera sits relative to the part's centre.
 enum ViewPreset: String, CaseIterable, Identifiable {

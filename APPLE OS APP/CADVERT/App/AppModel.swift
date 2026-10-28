@@ -60,6 +60,10 @@ final class AppModel {
     var viewCommand = ViewCommand(preset: .iso, animated: false)
     /// Bumped to move keyboard focus to the question field.
     var inputFocusRequest = 0
+    /// Set to ask the 3D view for a picture of what it shows (`snapshotReady` gets it).
+    var snapshotRequest: UUID?
+    var imageExport: ImagesDocument?
+    var showImageExporter = false
     private var pendingPick: Int?
 
     // Models offered by each provider — live from the provider once a key exists.
@@ -475,6 +479,33 @@ final class AppModel {
         highlightedFaces = []
     }
 
+    /// Save exactly what the 3D view shows, at twice its on-screen size.
+    func saveCurrentView() { snapshotRequest = UUID() }
+
+    func snapshotReady(_ png: Data?) {
+        guard let png, let s = session else { showToast("Couldn't capture the 3D view"); return }
+        imageExport = ImagesDocument(name: "\(s.stem) 3D view.png", files: [("\(s.stem) 3D view.png", png)])
+        showImageExporter = true
+    }
+
+    /// The seven standard views the engine rendered (front, back, left, right, top, bottom,
+    /// iso), saved together as a folder of PNGs.
+    func exportStandardViews() async {
+        guard let client, let s = session, !s.images.isEmpty else {
+            showToast("This part has no rendered views to export"); return
+        }
+        do {
+            var files: [(String, Data)] = []
+            for image in s.images {
+                files.append(("\(s.stem) \(image.label).png", try await client.viewImage(image)))
+            }
+            imageExport = ImagesDocument(name: "\(s.stem) views", files: files)
+            showImageExporter = true
+        } catch {
+            showToast("Couldn't fetch the views — \(error.localizedDescription)")
+        }
+    }
+
     /// Start a question about the selected face; the user can send it as is or edit it.
     func askAboutSelection() {
         guard let f = selectedFace else { return }
@@ -669,5 +700,28 @@ struct HSDDocument: FileDocument {
     }
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
         FileWrapper(regularFileWithContents: Data(text.utf8))
+    }
+}
+
+/// One PNG, or several saved together as a folder.
+struct ImagesDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.png, .folder] }
+    var name: String
+    var files: [(name: String, data: Data)]
+
+    var contentType: UTType { files.count == 1 ? .png : .folder }
+
+    init(name: String, files: [(name: String, data: Data)]) { self.name = name; self.files = files }
+    init(configuration: ReadConfiguration) throws { throw CocoaError(.featureUnsupported) }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        if files.count == 1 { return FileWrapper(regularFileWithContents: files[0].data) }
+        var children: [String: FileWrapper] = [:]
+        for file in files {
+            let wrapper = FileWrapper(regularFileWithContents: file.data)
+            wrapper.preferredFilename = file.name
+            children[file.name] = wrapper
+        }
+        return FileWrapper(directoryWithFileWrappers: children)
     }
 }

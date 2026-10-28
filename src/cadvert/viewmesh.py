@@ -77,6 +77,11 @@ def build_view_mesh(shape, graph=None, units: str = "mm") -> bytes:
     nrm = np.concatenate(normals).astype(np.float32) if normals else np.zeros((0, 3), np.float32)
     idx = np.concatenate(triangles).astype(np.uint32) if triangles else np.zeros((0, 3), np.uint32)
 
+    # The box of what is drawn, which is tighter than OpenCascade's (that one is padded
+    # for curved surfaces) — the app labels the part's overall size from it.
+    if len(pos):
+        lo, hi = pos.min(axis=0).astype(np.float64), pos.max(axis=0).astype(np.float64)
+
     header = {
         "version": 1,
         "units": units,

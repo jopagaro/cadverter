@@ -100,18 +100,22 @@ struct MainArea: View {
     var isCompact: Bool
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var p
-    @AppStorage("viewerHeight") private var viewerHeight: Double = 340
+    /// The 3D view's share of the height, so it grows and shrinks with the window.
+    @AppStorage("viewerFraction") private var viewerFraction: Double = 0.5
 
     var body: some View {
         GeometryReader { geo in
             VStack(spacing: 0) {
                 if model.session != nil {
                     // Leave the chat room for a few lines of conversation and the input bar.
-                    let range = 160.0 ... max(160, Double(geo.size.height) - 240)
+                    let total = Double(geo.size.height)
+                    let range = 160.0 ... max(160, total - 240)
+                    let share = isCompact ? 0.4 : viewerFraction
                     ViewerPanel()
-                        .frame(height: isCompact ? min(260, range.upperBound)
-                                                 : min(max(viewerHeight, range.lowerBound), range.upperBound))
-                    if isCompact { Hairline() } else { ViewerDivider(height: $viewerHeight, range: range) }
+                        .frame(height: min(max(total * share, range.lowerBound), range.upperBound))
+                    if isCompact { Hairline() } else {
+                        ViewerDivider(fraction: $viewerFraction, total: total, range: range)
+                    }
                 }
                 ChatView(isCompact: isCompact)
                 Hairline()

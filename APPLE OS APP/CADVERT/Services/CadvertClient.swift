@@ -138,6 +138,16 @@ struct CadvertClient {
         return try JSONDecoder().decode(FaceInfo.self, from: data)
     }
 
+    /// One of the standard views the engine rendered, as PNG data.
+    func viewImage(_ image: ViewImage) async throws -> Data {
+        guard let url = image.resolvedURL(base: baseURL) else { throw CadvertError.invalidResponse }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 30
+        let (data, resp) = try await Self.session.data(for: req)
+        try Self.check(resp, data)
+        return data
+    }
+
     /// `GET /models` — what this key can actually use, asked of the provider.
     func availableModels(provider: AIProvider, apiKey: String?) async throws -> ModelListing {
         var req = request("/models?provider=\(provider.rawValue)")
