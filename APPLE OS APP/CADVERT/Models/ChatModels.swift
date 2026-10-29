@@ -12,6 +12,8 @@ struct ChatMessage: Identifiable, Equatable {
     /// How the answer was reached: the geometry lookups and any notes the model wrote
     /// between them. Shown collapsed under "Show working"; `text` holds only the answer.
     var work: [WorkStep] = []
+    /// What the answer pointed to in the 3D view, so it can be shown again later.
+    var highlight: ViewerHighlight? = nil
 
     init(id: UUID = UUID(), role: Role, text: String, isTyping: Bool = false, toolLabel: String? = nil,
          isError: Bool = false, work: [WorkStep] = []) {
@@ -21,6 +23,12 @@ struct ChatMessage: Identifiable, Equatable {
 
     static func user(_ text: String) -> ChatMessage { ChatMessage(role: .user, text: text) }
     static func typing() -> ChatMessage { ChatMessage(role: .assistant, text: "", isTyping: true) }
+}
+
+/// Faces an answer pointed to, and a few words saying what they are ("Thinnest wall · 1.6 mm").
+struct ViewerHighlight: Equatable {
+    var faces: [Int]
+    var label: String
 }
 
 enum WorkStep: Equatable {
@@ -44,6 +52,13 @@ struct ReplyAssembler {
         if !note.isEmpty { work.append(.note(note)) }
         answer = ""
         work.append(.lookup(label))
+    }
+
+    /// A step that isn't a lookup (showing something in the 3D view): it goes in the working,
+    /// but the text around it is all answer. Models often write the answer, then show it.
+    mutating func aside(_ label: String) {
+        work.append(.lookup(label))
+        if !answer.isEmpty, !answer.hasSuffix("\n") { answer += "\n\n" }
     }
 
     /// The reply once the stream ends. A model that wrote its whole answer and then made one
@@ -126,7 +141,12 @@ enum ToolLabels {
         "get_neighbors":     "Exploring adjacent faces",
         "search_faces":      "Searching geometry",
         "get_cross_section": "Computing cross section",
+        "get_component":     "Looking up the component",
+        "compute_mass":      "Computing mass",
+        "show_in_viewer":    "Showing it in the 3D view",
     ]
+    /// Not a lookup: it changes what the 3D view shows (see `ReplyAssembler.aside`).
+    static let showInViewer = "show_in_viewer"
     static func label(for tool: String) -> String { map[tool] ?? "Calling \(tool)" }
 }
 

@@ -92,6 +92,7 @@ final class AppleIntelligenceIntegrationTests: XCTestCase {
             switch ev {
             case .content(let c): text += c
             case .toolCall(let t): toolCalls.append(t)
+            case .highlight: break
             case .error(let e): XCTFail(e)
             case .done: break
             }

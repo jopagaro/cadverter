@@ -1,4 +1,5 @@
 import XCTest
+import simd
 @testable import CADVERT
 
 final class PartMeshTests: XCTestCase {
@@ -37,6 +38,18 @@ final class PartMeshTests: XCTestCase {
         XCTAssertNil(m.face(ofTriangle: 2))
         XCTAssertEqual(m.indices(ofFaces: [2]).triangles, 1)
         XCTAssertEqual(m.indices(ofFaces: [1, 2, 2, 99]).triangles, 2)
+    }
+
+    func testRegionOfSomeFaces() throws {
+        let m = try PartMesh(data: packed(), sessionId: "s")
+        // Face 1 is the triangle (0,0,0) (140,0,0) (140,90,0): flat on the floor, facing up.
+        let one = try XCTUnwrap(m.region(ofFaces: [1]))
+        XCTAssertEqual(one.center, SIMD3(70, 45, 0))
+        XCTAssertEqual(one.radius, simd_length(SIMD3<Float>(140, 90, 0)) / 2, accuracy: 1e-3)
+        XCTAssertEqual(one.facing.z, 1, accuracy: 1e-5)
+        XCTAssertEqual(try XCTUnwrap(m.region(ofFaces: [1, 2])).center, m.center)
+        XCTAssertNil(m.region(ofFaces: [99]))
+        XCTAssertNil(m.region(ofFaces: []))
     }
 
     func testRejectsBadData() {

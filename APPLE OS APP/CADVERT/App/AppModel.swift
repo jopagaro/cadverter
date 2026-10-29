@@ -56,6 +56,8 @@ final class AppModel {
     var mesh: PartMesh?
     var meshState: MeshState = .none
     var selectedFace: FaceInfo?
+    /// What the last answer pointed to in the view, until a click or the card's × clears it.
+    var answerHighlight: ViewerHighlight?
     var highlightedFaces: [Int] = []
     var viewCommand = ViewCommand(preset: .iso, animated: false)
     /// Bumped to move keyboard focus to the question field.
@@ -464,6 +466,7 @@ final class AppModel {
     func pickFace(_ face: Int?) {
         guard let face, let client, let s = session, !s.isMesh else { clearSelection(); return }
         pendingPick = face
+        answerHighlight = nil
         highlightedFaces = [face]
         Task {
             let info = try? await client.faceInfo(sessionId: s.id, faceId: face)
@@ -476,7 +479,17 @@ final class AppModel {
     func clearSelection() {
         pendingPick = nil
         selectedFace = nil
+        answerHighlight = nil
         highlightedFaces = []
+    }
+
+    /// Light up what an answer points to and turn the view to it.
+    func show(_ highlight: ViewerHighlight) {
+        pendingPick = nil
+        selectedFace = nil
+        answerHighlight = highlight
+        highlightedFaces = highlight.faces
+        viewCommand = ViewCommand(faces: highlight.faces)
     }
 
     /// Save exactly what the 3D view shows, at twice its on-screen size.
@@ -567,6 +580,13 @@ final class AppModel {
         do {
             for try await event in stream {
                 switch event {
+                case .toolCall(let name) where name == ToolLabels.showInViewer:
+                    reply.aside(ToolLabels.label(for: name))
+                    let work = reply.work
+                    update(typingId) { $0.work = work }
+                case .highlight(let shown):
+                    update(typingId) { $0.highlight = shown }
+                    show(shown)
                 case .toolCall(let name):
                     let label = ToolLabels.label(for: name)
                     reply.toolCall(label)

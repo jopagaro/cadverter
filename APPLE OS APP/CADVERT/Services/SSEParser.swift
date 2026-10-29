@@ -4,6 +4,7 @@ import Foundation
 ///
 ///     data: {"content": "…"}
 ///     data: {"tool_call": "get_feature"}
+///     data: {"highlight": {"faces": [12, 30], "label": "Thinnest wall · 1.6 mm"}}
 ///     data: {"error": "…"}
 ///     data: [DONE]
 ///
@@ -20,6 +21,9 @@ enum SSEParser {
         }
         if let err = obj["error"] as? String { return .error(err) }
         if let tool = obj["tool_call"] as? String { return .toolCall(tool) }
+        if let h = obj["highlight"] as? [String: Any], let faces = h["faces"] as? [Int], !faces.isEmpty {
+            return .highlight(ViewerHighlight(faces: faces, label: h["label"] as? String ?? ""))
+        }
         if let content = obj["content"] as? String { return .content(content) }
         return nil
     }

@@ -202,6 +202,16 @@ final class ReplyAssemblerTests: XCTestCase {
         XCTAssertEqual(r.work, [.lookup("Measuring distance")])
     }
 
+    func testShowingInTheViewDoesNotSplitTheAnswer() {
+        var r = ReplyAssembler()
+        r.content("The thinnest wall is **1.6 mm**, between F12 and F30.")
+        r.aside("Showing it in the 3D view")
+        r.content("(highlighted in the view)")
+        r.finish()
+        XCTAssertEqual(r.answer, "The thinnest wall is **1.6 mm**, between F12 and F30.\n\n(highlighted in the view)")
+        XCTAssertEqual(r.work, [.lookup("Showing it in the 3D view")])
+    }
+
     func testPlainAnswerHasNoWorking() {
         var r = ReplyAssembler()
         r.content("Hello ")

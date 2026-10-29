@@ -69,6 +69,9 @@ struct ViewerPanel: View {
             HStack(alignment: .bottom) {
                 if let face = model.selectedFace {
                     SelectionCard(face: face, ask: model.askAboutSelection, close: model.clearSelection)
+                } else if let shown = model.answerHighlight {
+                    HighlightCard(highlight: shown, look: { model.viewCommand = ViewCommand(faces: shown.faces) },
+                                  close: model.clearSelection)
                 } else {
                     Text(hint).typo(10, .medium).foregroundStyle(p.textDim)
                 }
@@ -314,6 +317,45 @@ private struct SelectionCard: View {
     }
 }
 
+/// What an answer pointed to in the view ("Thinnest wall · 1.6 mm"), until a click or × clears it.
+private struct HighlightCard: View {
+    var highlight: ViewerHighlight
+    var look: () -> Void
+    var close: () -> Void
+    @Environment(\.palette) private var p
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            HStack(spacing: 9) {
+                Image(systemName: "scope").font(.system(size: 12, weight: .semibold)).foregroundStyle(p.accent)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(highlight.label.isEmpty ? "From the answer" : highlight.label)
+                        .typo(12, .semibold).foregroundStyle(p.text)
+                    Text(subtitle).typo(10.5, .medium).foregroundStyle(p.textMuted)
+                }
+            }
+            .textSelection(.enabled)
+            Button("Look at it", action: look).buttonStyle(GhostButtonStyle())
+                .help("Turn the view back to the highlighted faces")
+            Button(action: close) {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(p.textMuted)
+                    .frame(width: 18, height: 18).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Clear the highlight")
+        }
+        .padding(.leading, 12).padding(.trailing, 8).padding(.vertical, 8)
+        .background(p.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(p.border, lineWidth: 1))
+        .shadow(color: .black.opacity(p.isDark ? 0.4 : 0.08), radius: 8, y: 2)
+    }
+
+    private var subtitle: String {
+        let faces = highlight.faces.count == 1 ? "F\(highlight.faces[0])" : "\(highlight.faces.count) faces"
+        return "From the answer · \(faces)"
+    }
+}
+
 /// The draggable line between the 3D view and the chat. It sets the view's *share* of the
 /// window, so the split keeps its proportions as the window grows or shrinks.
 struct ViewerDivider: View {
@@ -507,7 +549,7 @@ final class ViewerController: NSObject {
 
     private var mesh: PartMesh?
     private var partNode: SCNNode?
-    private var highlightNode: SCNNode?
+    private var highlightNode: SCNNode?, ghostNode: SCNNode?
     private var sources: [SCNGeometrySource] = []
     private var highlighted: [Int] = []
     private var lastCommand: UUID?
@@ -520,6 +562,7 @@ final class ViewerController: NSObject {
     private let bodyMaterial = SCNMaterial()
     private let edgeMaterial = SCNMaterial()
     private let highlightMaterial = SCNMaterial()
+    private let ghostMaterial = SCNMaterial()
     private let gridMaterial = SCNMaterial()
     private let boxMaterial = SCNMaterial()
     private let labelMaterial = SCNMaterial()
@@ -563,6 +606,13 @@ final class ViewerController: NSObject {
         highlightMaterial.lightingModel = .blinn
         highlightMaterial.isDoubleSided = true
         highlightMaterial.shaderModifiers = [.geometry: Self.pullTowardCamera(0.9997)]
+        // The same faces again, faintly, drawn over everything: a highlight inside a pocket or
+        // round the back still shows where it is.
+        ghostMaterial.lightingModel = .constant
+        ghostMaterial.isDoubleSided = true
+        ghostMaterial.readsFromDepthBuffer = false
+        ghostMaterial.writesToDepthBuffer = false
+        ghostMaterial.transparency = 0.22
 
         gridMaterial.lightingModel = .constant
         gridMaterial.isDoubleSided = true
@@ -637,6 +687,7 @@ final class ViewerController: NSObject {
         bodyMaterial.diffuse.contents = ViewerStyle.color(style.body).platform
         edgeMaterial.diffuse.contents = ViewerStyle.color(style.edge, style.edgeAlpha).platform
         highlightMaterial.diffuse.contents = ViewerStyle.color(style.highlight).platform
+        ghostMaterial.diffuse.contents = ViewerStyle.color(style.highlight).platform
         boxMaterial.diffuse.contents = ViewerStyle.color(style.box, style.boxAlpha).platform
         labelMaterial.diffuse.contents = ViewerStyle.color(style.label).platform
         tickMaterial.diffuse.contents = ViewerStyle.color(style.tick).platform
@@ -649,6 +700,7 @@ final class ViewerController: NSObject {
         partNode?.removeFromParentNode()
         partNode = nil
         highlightNode = nil
+        ghostNode = nil
         highlighted = []
         gridNode?.removeFromParentNode(); gridNode = nil
         dimensionsNode?.removeFromParentNode(); dimensionsNode = nil
@@ -886,39 +938,66 @@ final class ViewerController: NSObject {
     func setHighlight(_ faces: [Int]) {
         guard faces != highlighted else { return }
         highlighted = faces
-        highlightNode?.removeFromParentNode()
+        for node in [highlightNode, ghostNode] { node?.removeFromParentNode() }
         highlightNode = nil
+        ghostNode = nil
         guard let mesh, let partNode, !faces.isEmpty else { return }
         let (data, count) = mesh.indices(ofFaces: faces)
         guard count > 0 else { return }
         let element = SCNGeometryElement(data: data, primitiveType: .triangles, primitiveCount: count, bytesPerIndex: 4)
-        let geometry = SCNGeometry(sources: sources, elements: [element])
-        geometry.materials = [highlightMaterial]
-        let node = SCNNode(geometry: geometry)
-        node.categoryBitMask = Self.overlayMask
-        node.renderingOrder = 2
-        partNode.addChildNode(node)
-        highlightNode = node
+        func overlay(_ material: SCNMaterial, order: Int) -> SCNNode {
+            let geometry = SCNGeometry(sources: sources, elements: [element])
+            geometry.materials = [material]
+            let node = SCNNode(geometry: geometry)
+            node.categoryBitMask = Self.overlayMask
+            node.renderingOrder = order
+            partNode.addChildNode(node)
+            return node
+        }
+        highlightNode = overlay(highlightMaterial, order: 2)
+        ghostNode = overlay(ghostMaterial, order: 4)      // before the floor (5) and labels (10)
     }
 
-    /// Frame the whole part from a standard direction.
+    /// Frame the whole part from a standard direction, or turn to some faces.
     func apply(_ command: ViewCommand) {
-        guard command.token != lastCommand, let mesh, let view else { return }
+        guard command.token != lastCommand, let mesh, view != nil else { return }
         lastCommand = command.token
+        switch command.target {
+        case .preset(let preset):
+            look(at: mesh.center, radius: mesh.radius, from: preset.direction, up: preset.up, animated: command.animated)
+        case .faces(let faces):
+            guard let region = mesh.region(ofFaces: faces) else { return }
+            // Keep the angle the user chose unless the faces turn away from it; then swing round
+            // toward them. Come close enough to see them, never so close the part is lost.
+            let target = view.map { SIMD3<Float>($0.defaultCameraController.target) } ?? mesh.center
+            var direction = simd_normalize(cameraNode.simdPosition - target)
+            if simd_length(region.facing) > 0.5 {
+                let facing = simd_normalize(region.facing)
+                if simd_dot(direction, facing) < 0.2 { direction = simd_normalize(facing * 1.5 + direction) }
+            }
+            let radius = min(max(region.radius * 2.5, mesh.radius * 0.3), mesh.radius)
+            look(at: region.center, radius: radius, from: direction, up: SIMD3(0, 0, 1), animated: true)
+        }
+    }
+
+    /// Put the camera on *direction* from *center*, just far enough back to fit a sphere of *radius*.
+    private func look(at center: SIMD3<Float>, radius: Float, from direction: SIMD3<Float>, up: SIMD3<Float>,
+                      animated: Bool) {
+        guard let view else { return }
         let size = view.bounds.size
         let aspect = size.height > 0 ? Float(size.width / size.height) : 1.4
         let halfVertical = Float(cameraNode.camera?.fieldOfView ?? 30) * .pi / 360
         let halfHorizontal = atan(tan(halfVertical) * aspect)
-        let distance = mesh.radius / sin(min(halfVertical, halfHorizontal)) * 1.04
+        let distance = radius / sin(min(halfVertical, halfHorizontal)) * 1.04
 
         SCNTransaction.begin()
-        SCNTransaction.animationDuration = command.animated ? 0.45 : 0
+        SCNTransaction.animationDuration = animated ? 0.45 : 0
         SCNTransaction.animationTimingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        let eye = mesh.center + command.preset.direction * distance
+        let eye = center + direction * distance
         cameraNode.simdPosition = eye
-        cameraNode.simdOrientation = Self.orientation(from: eye, to: mesh.center, up: command.preset.up)
+        cameraNode.simdOrientation = Self.orientation(from: eye, to: center, up: up)
         SCNTransaction.commit()
-        view.defaultCameraController.target = SCNVector3(mesh.center)
+        view.defaultCameraController.target = SCNVector3(center)
     }
 
     /// A camera orientation looking from *eye* to *target* with *up* as near to up as it can be.

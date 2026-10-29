@@ -95,6 +95,38 @@ struct PartMesh {
         }
         return (out, total)
     }
+
+    /// Where some faces are: the centre and radius of their bounding box, and which way they
+    /// face on average — area-weighted, so its length runs from 0 (facing every way, like a
+    /// bore) to 1 (one flat face). Nil if none of the faces has a triangle.
+    func region(ofFaces ids: [Int]) -> (center: SIMD3<Float>, radius: Float, facing: SIMD3<Float>)? {
+        var lo = SIMD3<Float>(repeating: .infinity), hi = -lo
+        var facing = SIMD3<Float>.zero
+        var area: Float = 0
+        positions.withUnsafeBytes { pos in
+            indices.withUnsafeBytes { idx in
+                func corner(_ t: Int, _ k: Int) -> SIMD3<Float> {
+                    let v = Int(idx.loadUnaligned(fromByteOffset: (t * 3 + k) * 4, as: UInt32.self))
+                    return SIMD3(pos.loadUnaligned(fromByteOffset: v * 12, as: Float.self),
+                                 pos.loadUnaligned(fromByteOffset: v * 12 + 4, as: Float.self),
+                                 pos.loadUnaligned(fromByteOffset: v * 12 + 8, as: Float.self))
+                }
+                for id in Set(ids) where id >= 1 && id <= faceRanges.count {
+                    let r = faceRanges[id - 1]
+                    for t in r.first ..< r.first + r.count {
+                        let a = corner(t, 0), b = corner(t, 1), c = corner(t, 2)
+                        lo = simd_min(lo, simd_min(a, simd_min(b, c)))
+                        hi = simd_max(hi, simd_max(a, simd_max(b, c)))
+                        let n = simd_cross(b - a, c - a)     // outward (the engine winds them so), 2 × area long
+                        facing += n
+                        area += simd_length(n)
+                    }
+                }
+            }
+        }
+        guard area > 0 else { return nil }
+        return ((lo + hi) / 2, max(simd_length(hi - lo) / 2, 1e-3), facing / area)
+    }
 }
 
 private extension Data {
@@ -169,9 +201,21 @@ enum ViewPreset: String, CaseIterable, Identifiable {
 
 /// A one-shot request to move the 3D view's camera; the token makes repeats count.
 struct ViewCommand: Equatable {
-    var preset: ViewPreset
+    /// A standard view of the whole part, or a look at some faces.
+    enum Target: Equatable {
+        case preset(ViewPreset)
+        case faces([Int])
+    }
+    var target: Target
     var animated = true
     var token = UUID()
+
+    init(preset: ViewPreset, animated: Bool = true) {
+        target = .preset(preset)
+        self.animated = animated
+    }
+
+    init(faces: [Int]) { target = .faces(faces) }
 }
 
 enum MeshState: Equatable {

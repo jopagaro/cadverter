@@ -52,6 +52,9 @@ struct MessageBubble: View {
                 if !message.text.isEmpty {
                     MarkdownText(text: message.text, isUser: isUser)
                 }
+                if let shown = message.highlight {
+                    ShowInViewButton(highlight: shown)
+                }
             }
         }
         .padding(.horizontal, 14)
@@ -59,6 +62,38 @@ struct MessageBubble: View {
         .background(isUser ? p.accent : p.surface, in: shape)
         .overlay(shape.stroke(isUser ? .clear : (message.isError ? p.danger.opacity(0.4) : p.border), lineWidth: 1))
         .textSelection(.enabled)
+    }
+}
+
+/// Under an answer that pointed at something: shows it in the 3D view again.
+struct ShowInViewButton: View {
+    var highlight: ViewerHighlight
+    @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var p
+    @State private var hover = false
+
+    private var isShown: Bool { model.answerHighlight == highlight }
+
+    var body: some View {
+        Button { model.show(highlight) } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "scope").font(.system(size: 9.5, weight: .semibold))
+                Text(isShown ? "Shown in 3D view" : "Show in 3D view")
+                if !highlight.label.isEmpty {
+                    Text("· \(highlight.label)").foregroundStyle(p.textDim).lineLimit(1)
+                }
+            }
+            .typo(10, .medium)
+            .foregroundStyle(isShown || hover ? p.accent : p.textMuted)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 3)
+            .background(isShown ? p.accentSoft : (hover ? p.surfaceAlt : .clear), in: Capsule())
+            .overlay(Capsule().stroke(isShown ? p.accent.opacity(0.35) : p.border, lineWidth: 1))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .help("Highlight this in the 3D view and turn to it")
     }
 }
 

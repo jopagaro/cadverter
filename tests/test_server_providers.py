@@ -369,8 +369,9 @@ def test_answer_style_for_everyone_chart_format_only_for_rich_clients():
 def test_chat_passes_the_rich_flag_to_the_prompt(client, monkeypatch):
     seen = {}
 
-    async def fake_stream(api_key, model, system_msg, user_messages, session, use_tools):
+    async def fake_stream(api_key, model, system_msg, user_messages, session, use_tools, viewer=False):
         seen["system"] = system_msg
+        seen["viewer"] = viewer
         yield "data: [DONE]\n\n"
 
     monkeypatch.setattr(server, "_stream_anthropic", fake_stream)
@@ -383,3 +384,59 @@ def test_chat_passes_the_rich_flag_to_the_prompt(client, monkeypatch):
             assert ("```chart" in seen["system"]) is rich
     finally:
         server._sessions.pop("r1", None)
+
+
+def test_show_in_viewer_is_only_for_clients_with_a_3d_view(client, monkeypatch):
+    assert server.SHOW_TOOL_NAME not in {t["name"] for t in server._anthropic_tools()}
+    assert server.SHOW_TOOL_NAME in {t["name"] for t in server._anthropic_tools(viewer=True)}
+    assert server.SHOW_TOOL_NAME not in {t["name"] for t in client.get("/tools").json()}
+    assert "show_in_viewer" not in server._system_prompt("PART: x", rich=True)
+    assert "show_in_viewer" in server._system_prompt("PART: x", rich=True, viewer=True)
+
+    seen = {}
+
+    async def fake_stream(api_key, model, system_msg, user_messages, session, use_tools, viewer=False):
+        seen["viewer"], seen["system"] = viewer, system_msg
+        yield "data: [DONE]\n\n"
+
+    monkeypatch.setattr(server, "_stream_anthropic", fake_stream)
+    server._sessions["v1"] = {"message_count": 0, "tier0": "PART: x", "is_mesh": False}
+    server._sessions["v2"] = {"message_count": 0, "tier0": "PART: x", "is_mesh": True}
+    try:
+        for sid, asked, expected in (("v1", False, False), ("v1", True, True), ("v2", True, False)):
+            r = client.post(f"/chat/{sid}", json={"messages": [{"role": "user", "content": "hi"}], "viewer": asked},
+                            headers={"X-Provider": "anthropic", "X-Anthropic-Key": "sk-ant-x"})
+            assert r.status_code == 200
+            assert seen["viewer"] is expected                      # a mesh file has no face IDs to show
+            assert ("show_in_viewer" in seen["system"]) is expected
+    finally:
+        server._sessions.pop("v1", None)
+        server._sessions.pop("v2", None)
+
+
+@pytest.mark.asyncio
+async def test_stream_sends_the_highlight_to_the_app_not_the_model(monkeypatch):
+    pytest.importorskip("anthropic")
+    import anthropic as real
+
+    show = _Block(type="tool_use", id="toolu_1", name="show_in_viewer", input={"targets": ["F3", "F9"]})
+    round1 = _FakeStream(events=[_Event(type="content_block_start", content_block=show)],
+                         final=_Block(stop_reason="tool_use", content=[show]))
+    round2 = _FakeStream(
+        events=[_Event(type="content_block_delta", delta=_Block(type="text_delta", text="The web."))],
+        final=_Block(stop_reason="end_turn", content=[_Block(type="text", text="The web.")]),
+    )
+    _FakeAnthropic.next_messages = _FakeMessages([round1, round2])
+    monkeypatch.setattr(real, "AsyncAnthropic", _FakeAnthropic)
+    monkeypatch.setattr(server, "_execute_tool", lambda s, n, a: {
+        "shown": a["targets"], "faces": 2, "_highlight": {"faces": [3, 9], "label": "Thinnest wall"}})
+
+    out = [c async for c in server._stream_anthropic("k", "claude-opus-5", "SYS",
+                                                     [{"role": "user", "content": "thinnest wall?"}], {}, True,
+                                                     viewer=True)]
+    payloads = [json.loads(c[6:]) for c in out if c.startswith("data: ") and c.strip() != "data: [DONE]"]
+    assert {"highlight": {"faces": [3, 9], "label": "Thinnest wall"}} in payloads
+    assert "show_in_viewer" in {t["name"] for t in _FakeAnthropic.next_messages.calls[0]["tools"]}
+
+    told = json.loads(_FakeAnthropic.next_messages.calls[1]["messages"][-1]["content"][0]["content"])
+    assert told == {"shown": ["F3", "F9"], "faces": 2}       # the face list is for the app only

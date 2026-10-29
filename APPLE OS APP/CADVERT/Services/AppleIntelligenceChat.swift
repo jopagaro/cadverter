@@ -179,6 +179,7 @@ final class OnDeviceEngine {
         let tools: [any Tool] = part.isMesh ? [] : [
             GetFeatureTool(bridge), GetFaceTool(bridge), GetEdgeTool(bridge),
             MeasureDistanceTool(bridge), GetNeighborsTool(bridge), SearchFacesTool(bridge),
+            ShowInViewerTool(bridge),
         ]
         let s = LanguageModelSession(tools: tools, instructions: Self.instructions(for: part, budget: budget))
         session = s
@@ -196,7 +197,7 @@ final class OnDeviceEngine {
         }
         let toolRule = part.isMesh
             ? "This is a mesh file (STL/OBJ): exact B-REP geometry is unavailable — say so when asked for it."
-            : "Use the tools whenever you need a number that is not in the summary: get_feature for a hole/boss/fillet/pattern by ID, get_face / get_edge for F12 / E5, measure_distance between two entities, get_neighbors for adjacent faces, search_faces to find faces by type or size."
+            : "Use the tools whenever you need a number that is not in the summary: get_feature for a hole/boss/fillet/pattern by ID, get_face / get_edge for F12 / E5, measure_distance between two entities, get_neighbors for adjacent faces, search_faces to find faces by type or size. When asked which or where something is, call show_in_viewer with the IDs your answer points to."
         return """
         You are a mechanical engineer answering questions about one CAD part. All dimensions come from the exact CAD geometry; never estimate. \(toolRule)
         Reference faces as F12, edges as E5, features by ID such as hole_1. Start with the direct answer in one sentence, then at most a few short bullets, with units. Don't describe your steps.
@@ -243,6 +244,18 @@ final class ToolBridge: @unchecked Sendable {
     func call(_ name: String, _ arguments: [String: Any]) async throws -> String {
         emit(.toolCall(name))
         return try await client.executeTool(sessionId: sessionId, name: name, arguments: arguments)
+    }
+
+    /// show_in_viewer: the engine finds the faces; they go to the 3D view, and the model hears
+    /// only what was found.
+    func show(_ arguments: [String: Any]) async throws -> String {
+        let raw = try await call(ToolLabels.showInViewer, arguments)
+        guard var obj = (try? JSONSerialization.jsonObject(with: Data(raw.utf8))) as? [String: Any] else { return raw }
+        if let h = obj.removeValue(forKey: "_highlight") as? [String: Any],
+           let faces = h["faces"] as? [Int], !faces.isEmpty {
+            emit(.highlight(ViewerHighlight(faces: faces, label: h["label"] as? String ?? "")))
+        }
+        return String(decoding: try JSONSerialization.data(withJSONObject: obj), as: UTF8.self)
     }
 }
 
@@ -346,6 +359,23 @@ struct SearchFacesTool: Tool {
         if arguments.radius_min > 0 { args["radius_min"] = arguments.radius_min }
         if arguments.radius_max > 0 { args["radius_max"] = arguments.radius_max }
         return try await bridge.call(name, args)
+    }
+}
+
+@available(macOS 26.0, iOS 26.0, *)
+struct ShowInViewerTool: Tool {
+    let name = ToolLabels.showInViewer
+    let description = "Highlight faces or features in the user's 3D view. Use only when asked which or where something is, or to show it."
+    @Generable struct Arguments {
+        @Guide(description: "Face IDs (F12), edge IDs (E5) or feature IDs (hole_3) to highlight")
+        var targets: [String]
+        @Guide(description: "A few words naming what is shown, e.g. Thinnest wall · 1.6 mm")
+        var label: String
+    }
+    let bridge: ToolBridge
+    init(_ bridge: ToolBridge) { self.bridge = bridge }
+    func call(arguments: Arguments) async throws -> String {
+        try await bridge.show(["targets": arguments.targets, "label": arguments.label])
     }
 }
 

@@ -66,7 +66,8 @@ struct CadvertClient {
             req.setValue(apiKey, forHTTPHeaderField: provider == .anthropic ? "X-Anthropic-Key" : "X-OpenAI-Key")
         }
         // "rich": this app renders tables and ```chart blocks, so the engine may ask for them.
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["messages": history, "rich": true])
+        // "viewer": it has a 3D view, so the model may point at faces in it (show_in_viewer).
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["messages": history, "rich": true, "viewer": true])
         return req
     }
 

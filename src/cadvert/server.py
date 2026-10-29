@@ -14,6 +14,7 @@ import asyncio
 import json
 import mimetypes
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -377,6 +378,45 @@ CADVERT_TOOLS = [
 ]
 
 
+# Offered only to clients with a 3D view (the app sends "viewer": true). It changes what the
+# user sees, not what the model knows, so the web page and /tools never list it.
+SHOW_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "show_in_viewer",
+        "description": (
+            "Highlight part of the model in the user's 3D view and turn the view to it. Use it "
+            "only when the question is about finding or identifying something on the part — "
+            "which or where something is ('which wall is thinnest', 'where is hole_3', 'what's "
+            "the biggest hole') — or when the user asks to see, show or highlight it. Not for "
+            "general questions such as overall size, mass, counts or advice. Call it once, as soon "
+            "as you know what to show, before writing your answer."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "targets": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "What to highlight: face IDs (F12), edge IDs (E5 shows the two faces it "
+                        "joins), feature IDs (hole_3, fillet_1, pattern_2), a feature type for "
+                        "every feature of that type (fillet, through_hole), or component names "
+                        "from the ASSEMBLY table."
+                    ),
+                },
+                "label": {
+                    "type": "string",
+                    "description": "A few words naming what is shown, with its key value, e.g. 'Thinnest wall · 1.6 mm'.",
+                },
+            },
+            "required": ["targets"],
+        },
+    },
+}
+SHOW_TOOL_NAME = SHOW_TOOL["function"]["name"]
+
+
 # ── LLM providers ─────────────────────────────────────────────────────────────
 # Two hosted providers share the same tool set. Clients pick one with `X-Provider`
 # (openai | anthropic); if absent it is inferred from the model name.
@@ -393,15 +433,20 @@ _LAST_ROUND_NOTE = (
 TOOL_NAMES = {t["function"]["name"] for t in CADVERT_TOOLS}
 
 
-def _anthropic_tools() -> list[dict]:
-    """CADVERT_TOOLS (OpenAI function format) → Anthropic tool format."""
+def _openai_tools(viewer: bool = False) -> list[dict]:
+    """The geometry tools, plus show_in_viewer for a client that can show it."""
+    return CADVERT_TOOLS + ([SHOW_TOOL] if viewer else [])
+
+
+def _anthropic_tools(viewer: bool = False) -> list[dict]:
+    """The same tools (OpenAI function format) → Anthropic tool format."""
     return [
         {
             "name":         t["function"]["name"],
             "description":  t["function"]["description"],
             "input_schema": t["function"]["parameters"],
         }
-        for t in CADVERT_TOOLS
+        for t in _openai_tools(viewer)
     ]
 
 
@@ -477,7 +522,16 @@ _RICH_FORMATTING = (
 )
 
 
-def _system_prompt(tier0: str, rich: bool = False) -> str:
+# Only for clients with a 3D view beside the chat (the app sends "viewer": true).
+_VIEWER_RULE = (
+    "- The user sees the part in a 3D view beside this chat. When the question is about finding "
+    "or identifying something (which, where, what part is…), or they ask to see it, call "
+    "show_in_viewer with what your answer points to — before you write the answer. Otherwise "
+    "don't. Don't describe the highlight; at most add \"(highlighted in the view)\".\n"
+)
+
+
+def _system_prompt(tier0: str, rich: bool = False, viewer: bool = False) -> str:
     return (
         "You are an expert mechanical engineer and manufacturing consultant. "
         "You have direct access to the exact B-REP geometry of a CAD part through tool calls. "
@@ -499,7 +553,9 @@ def _system_prompt(tier0: str, rich: bool = False) -> str:
         "in parallel, and answer broad questions from the summary when it is enough.\n"
         "- Reference faces as F12, edges as E5, features by ID (hole_1, fillet_3).\n"
         "- Units are specified in the document header. Be precise with numbers.\n"
-        "- For mesh files (STL/OBJ): exact geometry is unavailable — say so clearly.\n\n"
+        "- For mesh files (STL/OBJ): exact geometry is unavailable — say so clearly.\n"
+        + (_VIEWER_RULE if viewer else "")
+        + "\n"
         + _ANSWER_STYLE
         + (_RICH_FORMATTING if rich else "")
         + f"\n<PART_SUMMARY>\n{tier0}\n</PART_SUMMARY>"
@@ -667,24 +723,25 @@ async def chat(
 
     session["message_count"] = session.get("message_count", 0) + 1
     tier0      = session.get("tier0") or session.get("hsd", "")
-    system_msg = _system_prompt(tier0, rich=bool(body.get("rich")))
     use_tools  = not session.get("is_mesh", False)
+    viewer     = use_tools and bool(body.get("viewer"))
+    system_msg = _system_prompt(tier0, rich=bool(body.get("rich")), viewer=viewer)
 
     if provider == "anthropic":
-        gen = _stream_anthropic(api_key, model, system_msg, user_messages, session, use_tools)
+        gen = _stream_anthropic(api_key, model, system_msg, user_messages, session, use_tools, viewer=viewer)
     else:
-        gen = _stream_openai(api_key, model, system_msg, user_messages, session, use_tools)
+        gen = _stream_openai(api_key, model, system_msg, user_messages, session, use_tools, viewer=viewer)
     return StreamingResponse(gen, media_type="text/event-stream")
 
 
 async def _stream_openai(api_key: str, model: str, system_msg: str, user_messages: list[dict],
-                         session: dict, use_tools: bool):
+                         session: dict, use_tools: bool, viewer: bool = False):
     """SSE generator: OpenAI chat completions with the CADVERT tool loop."""
     from openai import AsyncOpenAI
 
     client = AsyncOpenAI(api_key=api_key)
     openai_messages = [{"role": "system", "content": system_msg}] + user_messages
-    tools = CADVERT_TOOLS if use_tools else []
+    tools = _openai_tools(viewer) if use_tools else []
 
     try:
         # Stream the initial response — detect tool calls mid-stream
@@ -765,6 +822,9 @@ async def _stream_openai(api_key: str, model: str, system_msg: str, user_message
                 except Exception:
                     args = {}
                 result_data = _execute_tool(session, tc["name"], args)
+                highlight = result_data.pop("_highlight", None)
+                if highlight:
+                    yield f"data: {json.dumps({'highlight': highlight})}\n\n"
                 openai_messages.append({
                     "role":         "tool",
                     "tool_call_id": tc["id"],
@@ -822,17 +882,17 @@ async def _stream_openai(api_key: str, model: str, system_msg: str, user_message
 
 
 async def _stream_anthropic(api_key: str, model: str, system_msg: str, user_messages: list[dict],
-                            session: dict, use_tools: bool):
+                            session: dict, use_tools: bool, viewer: bool = False):
     """SSE generator: Claude (Messages API, streaming) with the CADVERT tool loop.
 
-    Same event vocabulary as the OpenAI path — `content`, `tool_call`, `error`, `[DONE]` —
-    so every client works unchanged. Claude Opus 5 runs adaptive thinking by default;
+    Same event vocabulary as the OpenAI path — `content`, `tool_call`, `highlight`, `error`,
+    `[DONE]` — so every client works unchanged. Claude Opus 5 runs adaptive thinking by default;
     thinking blocks are echoed back untouched when the tool loop continues the turn.
     """
     from anthropic import AsyncAnthropic
 
     client = AsyncAnthropic(api_key=api_key)
-    tools = _anthropic_tools() if use_tools else []
+    tools = _anthropic_tools(viewer) if use_tools else []
     messages = [
         {"role": m["role"], "content": m["content"]}
         for m in user_messages
@@ -877,6 +937,9 @@ async def _stream_anthropic(api_key: str, model: str, system_msg: str, user_mess
             for tu in tool_uses:
                 args = tu.input if isinstance(tu.input, dict) else {}
                 result_data = _execute_tool(session, tu.name, args)
+                highlight = result_data.pop("_highlight", None)
+                if highlight:
+                    yield f"data: {json.dumps({'highlight': highlight})}\n\n"
                 results.append({
                     "type":        "tool_result",
                     "tool_use_id": tu.id,
@@ -903,6 +966,9 @@ async def call_tool(
     For clients that drive the LLM themselves — e.g. the Mac/iPad app using Apple's
     on-device model — so the model's tool calls hit the same exact-geometry code as
     the hosted providers. Body: {"name": "get_feature", "arguments": {"feature_id": "hole_1"}}
+
+    show_in_viewer answers with the faces to light up under "_highlight"; the caller shows
+    them and passes the rest to its model.
     """
     session = _sessions.get(session_id)
     if not session:
@@ -911,7 +977,7 @@ async def call_tool(
     body = await request.json()
     name = str(body.get("name", ""))
     args = body.get("arguments") or {}
-    if name not in TOOL_NAMES:
+    if name not in TOOL_NAMES and name != SHOW_TOOL_NAME:
         raise HTTPException(status_code=400, detail=f"Unknown tool: {name}")
     if not isinstance(args, dict):
         raise HTTPException(status_code=400, detail="arguments must be an object")
@@ -1099,6 +1165,8 @@ def _execute_tool(session: dict, tool_name: str, args: dict) -> dict:
             return _tool_get_component(args.get("name", ""), session)
         elif tool_name == "compute_mass":
             return _tool_compute_mass(args, session)
+        elif tool_name == SHOW_TOOL_NAME:
+            return _tool_show(args, session)
         else:
             return {"error": f"Unknown tool: {tool_name}"}
     except Exception as exc:
@@ -1216,6 +1284,71 @@ def _tool_compute_mass(args: dict, session: dict) -> dict:
             "volumes are of the modelled solid; unmodelled threads make fastener mass slightly high",
         ],
     }
+
+
+def _tool_show(args: dict, session: dict) -> dict:
+    """Resolve what the model wants shown to face IDs. The faces go to the app under
+    "_highlight" (the stream loops pop it); the model only hears what was found."""
+    graph = session.get("graph")
+    if not graph:
+        return {"error": "No B-REP graph available"}
+    targets = args.get("targets") or []
+    if isinstance(targets, str):
+        targets = [targets]
+    faces: set[int] = set()
+    shown, not_found = [], []
+    for t in [str(t).strip() for t in targets[:50] if str(t).strip()]:
+        found = _faces_of_target(t, session)
+        (shown if found else not_found).append(t)
+        faces |= found
+    if not faces:
+        return {
+            "error": "Nothing matched. Use face IDs (F12), edge IDs (E5), feature IDs (hole_3), "
+                     "a feature type (fillet) or a component name.",
+            "not_found": not_found,
+        }
+    label = " ".join(str(args.get("label") or "").split())[:80] or ", ".join(shown)[:80]
+    out: dict = {"shown": shown, "faces": len(faces)}
+    if not_found:
+        out["not_found"] = not_found
+    out["_highlight"] = {"faces": sorted(faces), "label": label}
+    return out
+
+
+def _faces_of_target(target: str, session: dict) -> set[int]:
+    """The faces one show_in_viewer target names: a face, an edge, a feature, every feature of
+    a type, or a component (all its instances). Empty if it names nothing."""
+    graph = session["graph"]
+    features = session.get("features") or []
+    feature_ids = session.get("feature_ids") or []
+    assembly = session.get("assembly")
+
+    if re.fullmatch(r"[Ff]?\d+", target):
+        fid = _parse_fid(target)
+        return {fid} if any(f.id == fid for f in graph.faces) else set()
+    if re.fullmatch(r"[Ee]\d+", target):
+        eid = _parse_eid(target)
+        edge = next((e for e in graph.edges if e.id == eid), None)
+        return set(edge.face_ids) if edge else set()
+    for fid, feat in zip(feature_ids, features):
+        if fid == target:
+            return set(feat.face_ids)
+
+    kind = re.sub(r"[\s-]+", "_", target.upper())
+    kinds = {kind, kind.removesuffix("S"), kind.removesuffix("ES")}     # fillets, bosses
+    of_type = [f for f in features if f.feature_type in kinds]
+    if not of_type and kinds & {"HOLE", "HOLES"}:
+        of_type = [f for f in features if f.feature_type.endswith("HOLE")]
+    if of_type:
+        return {fid for f in of_type for fid in f.face_ids}
+
+    if assembly:
+        q = target.lower()
+        names = {i.name for i in assembly.instances}
+        exact = {n for n in names if n.lower() == q}
+        matched = exact or {n for n in names if q in n.lower()}
+        return {fid for i in assembly.instances if i.name in matched for fid in i.face_ids}
+    return set()
 
 
 def _parse_fid(s: str) -> int:

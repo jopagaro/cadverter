@@ -122,3 +122,43 @@ def test_mesh_and_face_endpoints(part, tmp_path, monkeypatch):
         assert client.get("/mesh/nope").status_code == 404
     finally:
         server._sessions.pop("s1", None)
+
+
+def test_show_in_viewer_finds_what_the_answer_names(part):
+    from cadvert import server
+
+    ids = assign_feature_ids(part.features)
+    session = {"graph": part.graph, "features": part.features, "feature_ids": ids, "assembly": None}
+    hole_id, hole = next((i, f) for i, f in zip(ids, part.features) if f.feature_type.endswith("HOLE"))
+    edge = part.graph.edges[0]
+
+    r = server._execute_tool(session, "show_in_viewer",
+                             {"targets": ["F1", f"E{edge.id}", hole_id], "label": "  Thinnest   wall "})
+    h = r.pop("_highlight")
+    assert h["label"] == "Thinnest wall"
+    assert set(h["faces"]) == {1, *edge.face_ids, *hole.face_ids}
+    assert r == {"shown": ["F1", f"E{edge.id}", hole_id], "faces": len(h["faces"])}
+
+    every_hole = server._execute_tool(session, "show_in_viewer", {"targets": ["holes"]})["_highlight"]["faces"]
+    assert set(hole.face_ids) <= set(every_hole)
+
+    partly = server._execute_tool(session, "show_in_viewer", {"targets": ["F1", "F99999", "nothing_9"]})
+    assert partly["not_found"] == ["F99999", "nothing_9"] and partly["_highlight"]["faces"] == [1]
+    assert partly["_highlight"]["label"] == "F1"
+
+    missed = server._execute_tool(session, "show_in_viewer", {"targets": ["F99999"]})
+    assert "error" in missed and "_highlight" not in missed
+
+
+def test_show_in_viewer_lights_every_instance_of_a_component(part):
+    from types import SimpleNamespace as NS
+    from cadvert import server
+
+    screws = [NS(name="ISO 4762 - M8 x 20", face_ids=[1, 2]), NS(name="ISO 4762 - M8 x 20", face_ids=[3, 4])]
+    plate = NS(name="Mounting plate", face_ids=[5, 6, 7])
+    session = {"graph": part.graph, "features": [], "feature_ids": [],
+               "assembly": NS(instances=[*screws, plate])}
+
+    shown = server._execute_tool(session, "show_in_viewer", {"targets": ["iso 4762 - m8 x 20"]})
+    assert shown["_highlight"]["faces"] == [1, 2, 3, 4]
+    assert server._execute_tool(session, "show_in_viewer", {"targets": ["plate"]})["_highlight"]["faces"] == [5, 6, 7]

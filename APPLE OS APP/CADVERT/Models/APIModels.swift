@@ -189,6 +189,7 @@ enum CadvertError: LocalizedError, Equatable {
 enum ChatEvent: Equatable {
     case content(String)
     case toolCall(String)
+    case highlight(ViewerHighlight)
     case error(String)
     case done
 }
