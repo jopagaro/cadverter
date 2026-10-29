@@ -233,28 +233,37 @@ private struct ViewPresetBar: View {
     var choose: (ViewPreset) -> Void
     @Environment(\.palette) private var p
 
+    static let all: [ViewPreset] = [.iso, .front, .back, .left, .right, .top, .bottom]
+    static let common: [ViewPreset] = [.iso, .front, .top, .right]
+
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach([ViewPreset.iso, .front, .top, .right]) { preset in
-                PresetButton(label: preset.label) { choose(preset) }
-            }
-            Menu {
-                ForEach([ViewPreset.back, .left, .bottom]) { preset in
-                    Button(preset.label) { choose(preset) }
+        // Every view when the panel has room; the common four and a menu when it's narrow.
+        ViewThatFits(in: .horizontal) {
+            bar { ForEach(Self.all) { preset in PresetButton(label: preset.label) { choose(preset) } } }
+            bar {
+                ForEach(Self.common) { preset in PresetButton(label: preset.label) { choose(preset) } }
+                Menu {
+                    ForEach(Self.all.filter { !Self.common.contains($0) }) { preset in
+                        Button(preset.label) { choose(preset) }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis").font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(p.textMuted).frame(width: 26, height: 22).contentShape(Rectangle())
                 }
-            } label: {
-                Image(systemName: "ellipsis").font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(p.textMuted).frame(width: 26, height: 22).contentShape(Rectangle())
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("More views")
             }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("More views")
         }
-        .padding(.horizontal, 3)
-        .background(p.surface.opacity(0.92), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(p.border, lineWidth: 1))
+    }
+
+    private func bar(@ViewBuilder _ content: () -> some View) -> some View {
+        HStack(spacing: 0) { content() }
+            .padding(.horizontal, 3)
+            .background(p.surface.opacity(0.92), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(p.border, lineWidth: 1))
     }
 }
 
