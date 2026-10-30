@@ -101,6 +101,8 @@ struct AppCommands: Commands {
             Button("Export HSD…") { model.showHSDExporter = true }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
                 .disabled(model.session == nil)
+            Menu("Export Part") { PartExportItems(model: model) }
+                .disabled(model.session == nil || model.exporting != nil)
             Button("Copy HSD") { model.copyHSD() }
                 .keyboardShortcut("c", modifiers: [.command, .shift])
                 .disabled(model.session == nil)

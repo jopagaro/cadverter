@@ -130,6 +130,15 @@ struct CadvertClient {
         do { return try PartMesh(data: data, sessionId: sessionId) } catch { throw CadvertError.invalidResponse }
     }
 
+    /// `GET /export/{session}/{kind}` — the part written as a file to save (see `PartExport`).
+    func export(sessionId: String, kind: PartExport) async throws -> Data {
+        var req = request("/export/\(sessionId)/\(kind.rawValue)")
+        req.timeoutInterval = 600
+        let (data, resp) = try await Self.session.data(for: req)
+        try Self.check(resp, data)
+        return data
+    }
+
     /// `GET /face/{session}/{id}` — a clicked face, described.
     func faceInfo(sessionId: String, faceId: Int) async throws -> FaceInfo {
         var req = request("/face/\(sessionId)/\(faceId)")

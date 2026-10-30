@@ -44,11 +44,11 @@ struct ViewerPanel: View {
         }
         .clipped()
         .animation(.easeOut(duration: 0.15), value: showGrid)
-        .fileExporter(isPresented: $model.showImageExporter, document: model.imageExport,
-                      contentType: model.imageExport?.contentType ?? .png,
-                      defaultFilename: model.imageExport?.name) { result in
+        .fileExporter(isPresented: $model.showFileExporter, document: model.fileExport,
+                      contentType: model.fileExport?.contentType ?? .data,
+                      defaultFilename: model.fileExport?.name) { result in
             if case .failure(let error) = result { model.showToast(error.localizedDescription) }
-            else { model.showToast(model.imageExport?.files.count == 1 ? "Image saved" : "Views saved", success: true) }
+            else { model.showToast(model.fileExport?.saved ?? "Saved", success: true) }
         }
     }
 
@@ -109,23 +109,59 @@ private struct ViewerTools: View {
                        help: "The part's bounding box, with its overall length, width and height")
 
             Menu {
-                Button("Save Current View as PNG…") { model.saveCurrentView() }
-                Button("Export the 7 Standard Views…") { Task { await model.exportStandardViews() } }
-                    .disabled(model.session?.images.isEmpty ?? true)
+                Section("Images") {
+                    Button("Save Current View as PNG…") { model.saveCurrentView() }
+                    Button("Export the 7 Standard Views…") { Task { await model.exportStandardViews() } }
+                        .disabled(model.session?.images.isEmpty ?? true)
+                }
+                PartExportItems(model: model)
             } label: {
-                Label("Export", systemImage: "square.and.arrow.up").labelStyle(.titleAndIcon)
+                if let kind = model.exporting {
+                    HStack(spacing: 5) {
+                        SpinnerRing(size: 10)
+                        Text("Exporting \(kind.shortName)…")
+                    }
                     .typo(10.5, .medium).foregroundStyle(p.textMuted)
+                } else {
+                    Label("Export", systemImage: "square.and.arrow.up").labelStyle(.titleAndIcon)
+                        .typo(10.5, .medium).foregroundStyle(p.textMuted)
+                }
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize()
             .padding(.horizontal, 8).frame(height: 22)
-            .help("Save images of the part")
+            .disabled(model.exporting != nil)
+            .help("Save images of the part, or the part itself for 3D printing, the web or a spreadsheet")
         }
         .padding(.horizontal, 3)
         .background(p.surface.opacity(0.92), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(p.border, lineWidth: 1))
+    }
+}
+
+/// The formats this part can be saved as — in the viewer's Export menu and File ▸ Export Part.
+struct PartExportItems: View {
+    let model: AppModel
+
+    var body: some View {
+        if let session = model.session {
+            Section("Part") {
+                ForEach(PartExport.files) { kind in
+                    if kind.isAvailable(for: session) { item(kind) }
+                }
+            }
+            let tables = PartExport.tables.filter { $0.isAvailable(for: session) }
+            if !tables.isEmpty {
+                Section("Tables") { ForEach(tables) { item($0) } }
+            }
+        }
+    }
+
+    private func item(_ kind: PartExport) -> some View {
+        Button(kind.menuTitle) { Task { await model.export(kind) } }
+            .disabled(model.exporting != nil)
     }
 }
 

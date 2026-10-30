@@ -67,3 +67,25 @@ def test_rendered_views_served_without_system_mime_tables():
 
     assert mimetypes.knownfiles == []
     assert mimetypes.guess_type("part_front.png")[0] == "image/png"
+
+
+def test_export_endpoint_serves_files_to_save(session):
+    from fastapi.testclient import TestClient
+
+    client = TestClient(server.app)
+    server._sessions["x1"] = {**session, "name": "Block", "assembly": None}
+    try:
+        stl = client.get("/export/x1/stl")
+        assert stl.status_code == 200 and stl.headers["content-type"] == "model/stl"
+        assert "filename*=UTF-8''Block.stl" in stl.headers["content-disposition"]
+        assert len(stl.content) > 84
+
+        table = client.get("/export/x1/features.csv")
+        assert table.status_code == 200 and "hole_1" in table.content.decode("utf-8-sig")
+        assert "Block%20features.csv" in table.headers["content-disposition"]
+
+        assert client.get("/export/x1/bom.csv").status_code == 422    # a single part
+        assert client.get("/export/x1/dwg").status_code == 400
+        assert client.get("/export/nope/stl").status_code == 404
+    finally:
+        server._sessions.pop("x1", None)

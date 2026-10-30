@@ -33,6 +33,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -644,6 +645,7 @@ async def convert(
         raise HTTPException(status_code=422, detail=str(exc))
 
     result["message_count"] = 0
+    result["name"] = Path(file.filename or "Part").stem
     _sessions[session_id] = result
     _session_timestamps[session_id] = time.time()
 
@@ -1102,6 +1104,36 @@ def _write_view_mesh(session: dict, path: Path) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_bytes(data)
     tmp.replace(path)
+
+
+@app.get("/export/{session_id}/{kind}")
+async def export_part(session_id: str, kind: str):
+    """The part as a file to save: a mesh (stl, 3mf, obj, glb), a STEP file, or a table
+    (bom.csv, features.csv). Formats are described in export.py."""
+    from .export import FORMATS, ExportError
+    session = _sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+    if kind not in FORMATS:
+        raise HTTPException(status_code=400, detail=f"Unknown export format {kind!r}")
+    loop = asyncio.get_event_loop()
+    try:
+        data = await loop.run_in_executor(_executor, _export, session, kind)
+    except ExportError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    suffix, media_type = FORMATS[kind]
+    stem = session.get("name") or "Part"
+    name = stem + {"bom.csv": " BOM.csv", "features.csv": " features.csv"}.get(kind, suffix)
+    return Response(content=data, media_type=media_type,
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
+
+
+def _export(session: dict, kind: str) -> bytes:
+    from .export import export_part as write
+    return write(kind, session["shape"], name=session.get("name") or "Part",
+                 graph=session.get("graph"), features=session.get("features"),
+                 feature_ids=session.get("feature_ids"), assembly=session.get("assembly"),
+                 is_mesh=session.get("is_mesh", False))
 
 
 @app.get("/face/{session_id}/{face_id}")
@@ -1870,6 +1902,10 @@ def _build_summary(graph, features, metadata, body_count: int) -> dict:
             s["features"] = dict(Counter(f.feature_type for f in features))
         if metadata.gdt_annotations:
             s["gdt_count"] = len(metadata.gdt_annotations)
+        assembly = getattr(metadata, "assembly", None)
+        if assembly and assembly.instance_count > 1:
+            s["components"] = assembly.instance_count
+            s["parts"] = assembly.part_count
     return s
 
 

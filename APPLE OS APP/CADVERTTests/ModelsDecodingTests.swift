@@ -50,6 +50,35 @@ final class ModelsDecodingTests: XCTestCase {
         XCTAssertEqual(PartSession(r).systemSummaryLine, "part.stl · STL (mesh) · Ask about shape and size.")
     }
 
+    func testExportsOfferedForEachKindOfPart() throws {
+        let r = try JSONDecoder().decode(ConvertResponse.self, from: Data(convertJSON.utf8))
+        func offered(_ s: PartSession) -> [PartExport] { PartExport.allCases.filter { $0.isAvailable(for: s) } }
+
+        // A STEP part: meshes and its feature table — not STEP again, and no BOM for one part.
+        XCTAssertEqual(offered(PartSession(r)), [.stl, .threeMF, .obj, .glb, .features])
+
+        var iges = r; iges.format = "IGES"
+        XCTAssertTrue(offered(PartSession(iges)).contains(.step))
+
+        var assembly = r; assembly.summary.components = 6; assembly.summary.parts = 2
+        XCTAssertTrue(offered(PartSession(assembly)).contains(.bom))
+
+        var mesh = r; mesh.isMesh = true; mesh.format = "STL"; mesh.summary.features = nil
+        XCTAssertEqual(offered(PartSession(mesh)), [.stl, .threeMF, .obj, .glb])
+
+        XCTAssertEqual(PartExport.threeMF.filename(for: "bracket"), "bracket.3mf")
+        XCTAssertEqual(PartExport.bom.filename(for: "bracket"), "bracket BOM.csv")
+        XCTAssertEqual(PartExport.threeMF.contentType.preferredFilenameExtension, "3mf")
+        XCTAssertEqual(PartExport.glb.contentType.preferredFilenameExtension, "glb")
+        XCTAssertEqual(PartExport.step.contentType.preferredFilenameExtension, "step")
+    }
+
+    func testAssemblyCountsDecode() throws {
+        let s = try JSONDecoder().decode(PartSummary.self, from: Data(#"{"components": 6, "parts": 2}"#.utf8))
+        XCTAssertEqual(s.components, 6)
+        XCTAssertEqual(s.parts, 2)
+    }
+
     func testServerConfigDecodes() throws {
         let cfg = try JSONDecoder().decode(ServerConfig.self,
             from: Data(#"{"local_only": true, "max_file_mb": 500}"#.utf8))

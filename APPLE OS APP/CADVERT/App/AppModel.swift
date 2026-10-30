@@ -64,8 +64,11 @@ final class AppModel {
     var inputFocusRequest = 0
     /// Set to ask the 3D view for a picture of what it shows (`snapshotReady` gets it).
     var snapshotRequest: UUID?
-    var imageExport: ImagesDocument?
-    var showImageExporter = false
+    /// What the save panel is about to write — images of the view, or the part exported.
+    var fileExport: ExportDocument?
+    var showFileExporter = false
+    /// The export being prepared, while the engine writes it.
+    var exporting: PartExport?
     private var pendingPick: Int?
 
     // Models offered by each provider — live from the provider once a key exists.
@@ -497,8 +500,9 @@ final class AppModel {
 
     func snapshotReady(_ png: Data?) {
         guard let png, let s = session else { showToast("Couldn't capture the 3D view"); return }
-        imageExport = ImagesDocument(name: "\(s.stem) 3D view.png", files: [("\(s.stem) 3D view.png", png)])
-        showImageExporter = true
+        let name = "\(s.stem) 3D view.png"
+        fileExport = ExportDocument(name: name, files: [(name, png)], type: .png, saved: "Image saved")
+        showFileExporter = true
     }
 
     /// The seven standard views the engine rendered (front, back, left, right, top, bottom,
@@ -512,10 +516,27 @@ final class AppModel {
             for image in s.images {
                 files.append(("\(s.stem) \(image.label).png", try await client.viewImage(image)))
             }
-            imageExport = ImagesDocument(name: "\(s.stem) views", files: files)
-            showImageExporter = true
+            fileExport = ExportDocument(name: "\(s.stem) views", files: files, type: .png, saved: "Views saved")
+            showFileExporter = true
         } catch {
             showToast("Couldn't fetch the views — \(error.localizedDescription)")
+        }
+    }
+
+    /// The part as a file for another program — a slicer, a web page, a spreadsheet.
+    func export(_ kind: PartExport) async {
+        guard let client, let s = session, exporting == nil else { return }
+        exporting = kind
+        defer { exporting = nil }
+        do {
+            let data = try await client.export(sessionId: s.id, kind: kind)
+            guard session?.id == s.id else { return }
+            let name = kind.filename(for: s.stem)
+            fileExport = ExportDocument(name: name, files: [(name, data)], type: kind.contentType,
+                                        saved: "\(kind.shortName) saved")
+            showFileExporter = true
+        } catch {
+            showToast("Couldn't export the \(kind.shortName) — \(error.localizedDescription)")
         }
     }
 
@@ -723,15 +744,21 @@ struct HSDDocument: FileDocument {
     }
 }
 
-/// One PNG, or several saved together as a folder.
-struct ImagesDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.png, .folder] }
+/// One file, or several saved together as a folder.
+struct ExportDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.data, .folder] }
     var name: String
     var files: [(name: String, data: Data)]
+    /// The type of one file; several are saved as a folder.
+    var type: UTType
+    /// The toast once it's written ("STL saved").
+    var saved: String
 
-    var contentType: UTType { files.count == 1 ? .png : .folder }
+    var contentType: UTType { files.count == 1 ? type : .folder }
 
-    init(name: String, files: [(name: String, data: Data)]) { self.name = name; self.files = files }
+    init(name: String, files: [(name: String, data: Data)], type: UTType, saved: String) {
+        self.name = name; self.files = files; self.type = type; self.saved = saved
+    }
     init(configuration: ReadConfiguration) throws { throw CocoaError(.featureUnsupported) }
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {

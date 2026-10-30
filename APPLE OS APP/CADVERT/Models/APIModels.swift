@@ -88,9 +88,12 @@ struct PartSummary: Decodable, Equatable {
     var triangles: Int?
     var gdtCount: Int?
     var features: [String: Int]?
+    /// Set for an assembly: how many components, and how many distinct parts among them.
+    var components: Int?
+    var parts: Int?
 
     enum CodingKeys: String, CodingKey {
-        case format, schema, units, faces, edges, bodies, triangles, features
+        case format, schema, units, faces, edges, bodies, triangles, features, components, parts
         case isMesh = "is_mesh"
         case gdtCount = "gdt_count"
     }
