@@ -103,10 +103,14 @@ private struct ViewerTools: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            ToolToggle(title: "Grid", icon: "grid", isOn: $showGrid,
-                       help: "A measuring grid across the floor, with X, Y and Z axes marked in lengths")
-            ToolToggle(title: "Dimensions", icon: "ruler", isOn: $showDimensions,
-                       help: "The part's bounding box, with its overall length, width and height")
+            ToolToggle(title: "Grid", isOn: $showGrid,
+                       help: "A measuring grid across the floor, with X, Y and Z axes marked in lengths") {
+                FloorGridIcon().stroke(style: StrokeStyle(lineWidth: 1.1, lineCap: .round)).frame(width: 13, height: 9)
+            }
+            ToolToggle(title: "Dimensions", isOn: $showDimensions,
+                       help: "The part's bounding box, with its overall length, width and height") {
+                Image(systemName: "ruler")
+            }
 
             Menu {
                 Section("Images") {
@@ -165,16 +169,16 @@ struct PartExportItems: View {
     }
 }
 
-private struct ToolToggle: View {
+private struct ToolToggle<Icon: View>: View {
     var title: String
-    var icon: String
     @Binding var isOn: Bool
     var help: String
+    @ViewBuilder var icon: Icon
     @Environment(\.palette) private var p
 
     var body: some View {
         Button { isOn.toggle() } label: {
-            Label(title, systemImage: icon).labelStyle(.titleAndIcon)
+            Label { Text(title) } icon: { icon }.labelStyle(.titleAndIcon)
                 .typo(10.5, .medium)
                 .foregroundStyle(isOn ? p.text : p.textMuted)
                 .padding(.horizontal, 8).frame(height: 22)
@@ -183,6 +187,27 @@ private struct ToolToggle: View {
         }
         .buttonStyle(.plain)
         .help(help)
+    }
+}
+
+/// The Grid toggle's icon: a floor grid seen at an angle, its lines converging toward the
+/// far edge — the grid the toggle draws, rather than a flat "#".
+private struct FloorGridIcon: Shape {
+    func path(in r: CGRect) -> Path {
+        func lerp(_ a: CGPoint, _ b: CGPoint, _ t: CGFloat) -> CGPoint {
+            CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
+        }
+        let inset = r.width * 0.22
+        let farL = CGPoint(x: r.minX + inset, y: r.minY), farR = CGPoint(x: r.maxX - inset, y: r.minY)
+        let nearL = CGPoint(x: r.minX, y: r.maxY), nearR = CGPoint(x: r.maxX, y: r.maxY)
+        var p = Path()
+        for t: CGFloat in [0, 1.0 / 3, 2.0 / 3, 1] {         // lines running away from you
+            p.move(to: lerp(farL, farR, t)); p.addLine(to: lerp(nearL, nearR, t))
+        }
+        for t: CGFloat in [0, 0.28, 0.6, 1] {                // cross lines, wider apart up close
+            p.move(to: lerp(farL, nearL, t)); p.addLine(to: lerp(farR, nearR, t))
+        }
+        return p
     }
 }
 
